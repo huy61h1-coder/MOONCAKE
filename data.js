@@ -73,7 +73,7 @@ const AEON_DEFAULT_LAYOUT = {
 };
 
 const sharedKeys = ['aeon-products', 'aeon-ui', 'aeon-layout', 'aeon-customers', 'aeon-orders'];
-const canSync = () => location.protocol === 'http:' || location.protocol === 'https:';
+const canSync = () => typeof window !== 'undefined' && typeof window.getAeonSupabase === 'function';
 
 const aeonStore = {
   writing: new Set(),
@@ -142,15 +142,11 @@ const aeonStore = {
 
     this.writing.add(key);
     try {
-      const response = await fetch('/api/state', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({key, value})
-      });
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(result.error || 'Không thể lưu dữ liệu.');
-      }
+      const supabase = window.getAeonSupabase();
+      const {error} = await supabase
+        .from('aeon_state')
+        .upsert({key, value, updated_at: new Date().toISOString()}, {onConflict: 'key'});
+      if (error) throw new Error(error.message || 'Không thể lưu dữ liệu.');
       return true;
     } catch (error) {
       console.warn('AEON store sync failed:', error);
@@ -168,12 +164,20 @@ const aeonStore = {
 
     const startedAt = Date.now();
     try {
-      const response = await fetch('/api/state', {cache: 'no-store'});
-      if (!response.ok) return false;
+      const supabase = window.getAeonSupabase();
+      const {data, error} = await supabase
+        .from('aeon_state')
+        .select('key,value,updated_at');
+      if (error) throw error;
 
-      const state = await response.json();
+      const state = {};
+      (data || []).forEach(row => {
+        state[row.key] = row.value;
+      });
+
       const available = sharedKeys.filter(key => Object.prototype.hasOwnProperty.call(state, key));
       if (!available.length) {
+        // Cloud is empty — seed it from localStorage so a first deploy keeps existing data.
         sharedKeys.forEach(key => {
           const raw = localStorage.getItem(key);
           if (raw !== null) this.push(key, JSON.parse(raw));
@@ -182,7 +186,7 @@ const aeonStore = {
       }
 
       available.forEach(key => {
-        // Do not let a slower GET overwrite a just-saved local change.
+        // Do not let a slower read overwrite a just-saved local change.
         if (this.writing.has(key) || (this.lastWriteAt[key] || 0) > startedAt) return;
         localStorage.setItem(key, JSON.stringify(state[key]));
       });

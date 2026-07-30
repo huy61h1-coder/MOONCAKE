@@ -1,0 +1,7 @@
+[build]
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/import-products"
+  to = "/.netlify/functions/import-products"
+  status = 200

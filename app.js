@@ -270,27 +270,8 @@ function renderStorefrontEditorPreview(preview, value, name = 'Ảnh sản phẩ
   attachImageFallbacks(preview);
 }
 
-function readStorefrontImageAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Không thể đọc ảnh đã chọn.'));
-    reader.readAsDataURL(file);
-  });
-}
-
 async function uploadStorefrontProductImage(file) {
-  if (!file) throw new Error('Hãy chọn ảnh trước khi tải lên.');
-  if (!/^image\/(png|jpeg|webp|gif)$/i.test(file.type)) throw new Error('Chỉ hỗ trợ ảnh PNG, JPG, WEBP hoặc GIF.');
-  if (file.size > 10 * 1024 * 1024) throw new Error('Ảnh phải nhỏ hơn hoặc bằng 10 MB.');
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({filename: file.name, dataUrl: await readStorefrontImageAsDataUrl(file)})
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || 'Không thể tải ảnh lên.');
-  return normaliseImageUrl(result.url);
+  return window.uploadAeonImage(file);
 }
 
 function productFromStorefrontForm(form, existing = {}, variants = []) {

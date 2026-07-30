@@ -134,23 +134,7 @@ function setBusy(button, busy, busyText, idleText) {
 
 async function uploadOfficialImage(file) {
   if (!file) return null;
-  if (!file.type.startsWith('image/')) throw new Error('Vui lòng chọn một tệp hình ảnh.');
-  if (file.size > 10 * 1024 * 1024) throw new Error('Ảnh phải nhỏ hơn hoặc bằng 10 MB.');
-
-  const dataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Không thể đọc tệp ảnh.'));
-    reader.readAsDataURL(file);
-  });
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({filename: file.name, dataUrl})
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || 'Không thể tải ảnh lên.');
-  return normaliseImageUrl(result.url);
+  return window.uploadAeonImage(file);
 }
 
 async function saveShared(key, value) {
@@ -163,9 +147,12 @@ async function saveShared(key, value) {
 }
 
 async function remoteState() {
-  const response = await fetch('/api/state', {cache: 'no-store'});
-  if (!response.ok) throw new Error('Không thể kiểm tra dữ liệu đã lưu trên máy chủ.');
-  return response.json();
+  const supabase = window.getAeonSupabase();
+  const {data, error} = await supabase.from('aeon_state').select('key,value');
+  if (error) throw new Error('Không thể kiểm tra dữ liệu đã lưu trên máy chủ.');
+  const state = {};
+  (data || []).forEach(row => { state[row.key] = row.value; });
+  return state;
 }
 
 function sameImage(left, right) {
