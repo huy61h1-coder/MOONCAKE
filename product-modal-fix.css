@@ -1,0 +1,114 @@
+/*
+ * The modal shell contains #productDetailBody, which in turn contains the
+ * artwork and product copy. Put the grid on that body (rather than the shell)
+ * so the two visible blocks always occupy the intended columns.
+ */
+.product-modal-card {
+  width: min(1040px, calc(100vw - 32px));
+  max-width: none;
+  min-height: 440px;
+  max-height: 88dvh;
+  display: block !important;
+  overflow: auto;
+  position: relative;
+}
+
+#productDetailBody {
+  min-width: 0;
+  min-height: 440px;
+  display: grid;
+  grid-template-columns: minmax(300px, 42%) minmax(0, 58%);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.detail-art {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0 !important;
+  min-height: 440px;
+  height: 100%;
+  width: auto !important;
+}
+
+.detail-copy {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0 !important;
+  width: auto !important;
+  padding: 48px 42px 36px;
+  overflow-wrap: anywhere;
+}
+
+.detail-official-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  background: #f4eee4;
+}
+
+.detail-image-placeholder {
+  align-self: center;
+}
+
+.detail-copy h2 {
+  font-size: clamp(32px, 3vw, 46px);
+  word-break: break-word;
+}
+
+.detail-copy dl {
+  margin-bottom: 20px;
+}
+
+.detail-actions {
+  padding-top: 3px;
+}
+
+@media (max-width: 760px) {
+  .product-modal {
+    padding: 10px;
+  }
+
+  .product-modal-card {
+    width: 100%;
+    min-height: 0;
+    max-height: 92dvh;
+  }
+
+  #productDetailBody {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 250px auto;
+  }
+
+  .detail-art {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 250px;
+    height: 250px;
+  }
+
+  .detail-copy {
+    grid-column: 1;
+    grid-row: 2;
+    padding: 30px 22px 28px;
+  }
+
+  .detail-copy h2 {
+    font-size: 34px;
+  }
+
+  .modal-close {
+    z-index: 4;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .88);
+  }
+
+  .detail-official-image {
+    object-fit: contain;
+  }
+}

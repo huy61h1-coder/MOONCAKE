@@ -1,0 +1,41 @@
+.product-choose{min-height:42px;border:1px solid var(--red);background:var(--red);color:#fff;font:700 10px 'Be Vietnam Pro';cursor:pointer;padding:0 12px;white-space:nowrap}
+.product-choose:hover{border-color:var(--wine);background:var(--wine)}
+.detail-variant-picker{margin:18px 0 22px;padding:15px;border:1px solid var(--line);background:#fcfaf6}
+.detail-variant-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:11px;font-size:11px}
+.detail-variant-head>span{color:var(--muted);font-weight:700}
+.detail-variant-head b{color:var(--wine);font-size:11px;text-align:right}
+.detail-variant-options{display:flex;flex-wrap:wrap;gap:9px}
+.detail-variant-options button{min-width:142px;min-height:48px;border:1px solid var(--line);background:#fff;color:var(--ink);font:700 11px 'Be Vietnam Pro';text-align:left;cursor:pointer;padding:8px 11px}
+.detail-variant-options button span,.detail-variant-options button strong{display:block}
+.detail-variant-options button strong{margin-top:2px;color:var(--red);font-size:10px}
+.detail-variant-options button:hover,.detail-variant-options button:focus-visible{border-color:var(--red);outline:none}
+.detail-variant-options button.is-selected{border:2px solid var(--red);background:#fff5f6;color:var(--wine)}
+.detail-actions .button:disabled{cursor:not-allowed;opacity:.55;transform:none}
+.cart-variant{margin:2px 0!important;color:var(--wine)!important;font-size:10px!important;font-weight:700}
+
+.product-variant-editor{min-width:0;margin:0 0 18px;border:1px solid var(--line);background:#fcfaf6;padding:15px}
+.product-variant-editor legend{padding:0 5px;color:var(--wine);font-size:12px;font-weight:800}
+.product-variant-editor>p{margin:0 0 13px;color:var(--muted);font-size:10px;line-height:1.5}
+.product-variant-rows{display:grid;gap:10px}
+.product-variant-row{position:relative;display:grid;grid-template-columns:1.1fr .72fr .86fr 32px;gap:10px;align-items:end;border-top:1px solid rgba(222,214,201,.85);padding-top:10px}
+.product-variant-row label{display:block!important;margin:0!important;color:var(--ink);font-size:10px!important;font-weight:700}
+.product-variant-row input{margin-top:4px!important}
+.remove-product-variant{width:32px;height:32px;border:1px solid var(--line);background:#fff;color:var(--red);font-size:20px;line-height:1;cursor:pointer}
+.product-variant-editor [data-add-variant]{margin-top:12px;border:1px solid var(--line);background:#fff;color:var(--wine);font:700 10px 'Be Vietnam Pro';cursor:pointer;padding:9px 11px}
+[data-variant-price-hint]{display:block;min-height:15px;margin:2px 0 0;color:var(--muted);font-size:9px;font-weight:500;line-height:1.4}
+.derived-price{background:#f4f1eb!important;color:var(--muted)!important;cursor:default}
+
+@media(max-width:760px){
+  .product-choose{min-height:42px;padding:0 10px;font-size:10px}
+  .detail-variant-picker{margin:16px 0 20px;padding:13px}
+  .detail-variant-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .detail-variant-options button{min-width:0;min-height:52px}
+  .product-variant-row{grid-template-columns:1fr 1fr 32px}
+  .product-variant-row label:first-child{grid-column:1/-1}
+}
+
+@media(max-width:430px){
+  .detail-variant-options{grid-template-columns:1fr}
+  .product-variant-row{grid-template-columns:1fr 32px}
+  .product-variant-row label:first-child,.product-variant-row label:nth-child(2){grid-column:1/-1}
+}

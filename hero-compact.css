@@ -1,0 +1,19 @@
+/* Compact first screen: keep the product focus above the fold. */
+@media(min-width:761px){
+  .hero{min-height:0;padding:18px 6.5vw 16px 8vw;grid-template-columns:.8fr 1.2fr;align-items:center}
+  .hero-art{min-height:0;height:235px;align-self:center}
+  .hero-art img{width:110%;right:-7%;top:-5%;height:112%}
+  .moon{width:235px;height:235px;right:-8%;top:5%}
+  .hero h1{font-size:clamp(44px,3.8vw,56px);line-height:.98;letter-spacing:-1px}
+  .hero .eyebrow{font-size:10px;margin-bottom:5px}
+  .intro{font-size:14px;line-height:1.42;max-width:405px;margin:9px 0}
+  .hero-actions{margin-top:10px;gap:16px}
+  .button{padding:10px 15px;font-size:12px}
+  .text-link{font-size:12px}
+  .hero-promotion{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:8px;padding:6px 9px;max-width:510px;line-height:1.35}
+  .hero-promotion span{font-size:9px;flex:0 0 auto}
+  .hero-promotion p{margin:0;font-size:10px}
+  .hero .note{margin-top:7px;font-size:9px;line-height:1.35}
+  .collection{padding-top:54px}
+}
+@media(max-width:760px){.hero{padding-top:38px}.hero h1{font-size:54px}.hero .eyebrow{font-size:10px}.intro{font-size:15px;line-height:1.5}.hero-actions .button,.hero-actions .text-link{font-size:11px}.hero-art{height:260px}.hero-promotion{margin-top:13px}.hero-promotion span{font-size:9px}.hero-promotion p{font-size:11px}.hero .note{font-size:9px}}

@@ -1,0 +1,23 @@
+/* Brand collection and product brand labels. */
+.brand-directory{margin:0 0 26px;padding:17px 18px 18px;border:1px solid rgba(222,214,201,.9);background:rgba(255,253,248,.72)}
+.brand-directory-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:15px}
+.brand-directory-head>div{display:flex;align-items:baseline;gap:11px;min-width:0}
+.brand-directory h3,.brand-directory h4{margin:0;color:var(--ink)}
+.brand-directory h3{font-family:'Playfair Display',serif;font-size:24px;line-height:1}
+.brand-directory-head p{margin:0;color:var(--muted);font-size:10px}
+.brand-filter-reset,.brand-chip{border:1px solid rgba(190,177,158,.75);background:transparent;color:var(--ink);font:600 10px 'Be Vietnam Pro';cursor:pointer;transition:background .18s,border-color .18s,color .18s,transform .18s}
+.brand-filter-reset{padding:7px 10px;white-space:nowrap}
+.brand-filter-reset:hover,.brand-filter-reset:focus-visible,.brand-chip:hover,.brand-chip:focus-visible{border-color:var(--red);color:var(--red);outline:0}
+.brand-filter-reset.is-active,.brand-chip.is-active{border-color:var(--red);background:var(--red);color:#fff}
+.brand-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+.brand-group{min-width:0;padding-top:11px;border-top:1px solid rgba(222,214,201,.88)}
+.brand-group h4{margin-bottom:9px;font-size:11px;line-height:1.35}
+.brand-group-list{display:flex;flex-wrap:wrap;gap:7px}
+.brand-chip{padding:6px 8px;line-height:1.25}
+.brand-chip:hover{transform:translateY(-1px)}
+.brand-empty{grid-column:1/-1}
+.product-brand{margin:0 0 4px;color:var(--red);font-size:10px;font-weight:700;line-height:1.35}
+.detail-brand{margin:0 0 8px;color:var(--red);font-size:11px;font-weight:700;letter-spacing:.2px}
+.admin-form-grid select,.quick-product-fields select,.storefront-admin-form-grid select,.import-fields select{display:block;width:100%;margin-top:4px;border:0;border-bottom:1px solid #ccc5bb;padding:8px 0;background:transparent;color:var(--ink);font:13px 'Be Vietnam Pro';outline:none}
+.admin-form-grid select:focus,.quick-product-fields select:focus,.storefront-admin-form-grid select:focus,.import-fields select:focus{border-color:var(--red)}
+@media(max-width:760px){.brand-directory{margin-bottom:18px;padding:14px}.brand-directory-head{align-items:flex-start;margin-bottom:13px}.brand-directory-head>div{display:block}.brand-directory h3{font-size:21px}.brand-directory-head p{margin-top:4px;font-size:9px}.brand-filter-reset{padding:6px 8px;font-size:9px}.brand-groups{grid-template-columns:1fr;gap:12px}.brand-group{padding-top:10px}.brand-group h4{font-size:10px;margin-bottom:8px}.brand-group-list{gap:6px}.brand-chip{padding:6px 7px;font-size:9px}.product-brand{font-size:9px}.detail-brand{font-size:10px}}

@@ -1,0 +1,227 @@
+/* Product-first storefront refinement: cards, cart and checkout summary. */
+.hero-art .official-hero img { mix-blend-mode: normal; }
+.hero h1 { font-size: min(var(--admin-hero-title-size, 68px), 76px) !important; }
+.hero .intro { font-size: var(--admin-hero-intro-size, 15px) !important; }
+
+.products {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 20px;
+  align-items: stretch;
+}
+
+.products[data-product-count="1"] {
+  grid-template-columns: minmax(260px, 360px) !important;
+  justify-content: start;
+}
+
+.products[data-product-count="2"] {
+  grid-template-columns: repeat(2, minmax(260px, 360px)) !important;
+  justify-content: start;
+}
+
+.product {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(222, 214, 201, .95);
+  background: #fffdf8;
+  box-shadow: 0 2px 0 rgba(51, 35, 31, .02);
+}
+
+.product:hover { box-shadow: 0 16px 30px rgba(65, 45, 35, .11); }
+
+.product-media {
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 1.32 / 1;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--product-bg) 70%, white), #f8f5ef);
+}
+
+.product-media::before { width: 52%; height: auto; aspect-ratio: 1; top: auto; }
+
+.product-official-image {
+  object-fit: contain;
+  padding: 12px;
+  background: transparent;
+}
+
+.product-media .tag {
+  top: 12px;
+  left: 12px;
+  padding: 5px 8px;
+  font-size: 9px;
+}
+
+.product-info { padding: 16px; }
+
+.product-info h3 {
+  min-height: 44px;
+  margin: 0;
+  font-size: clamp(15px, var(--admin-product-title-size, 17px), 19px) !important;
+  line-height: 1.27;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.product-meta {
+  min-height: 17px;
+  margin: 4px 0 0;
+  color: var(--red);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .25px;
+}
+
+.product-info > p:not(.product-meta) {
+  min-height: 39px;
+  margin: 7px 0 15px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.62;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.product-bottom {
+  min-height: 47px;
+  gap: 10px;
+  border-top: 1px solid rgba(222, 214, 201, .76);
+  padding-top: 12px;
+}
+
+.price { font-size: 16px; color: var(--red); }
+.price.is-contact { color: var(--ink); font-size: 14px; }
+
+.product-add,
+.product-contact {
+  min-height: 42px;
+  border: 1px solid var(--red);
+  background: var(--red);
+  color: #fff;
+  text-decoration: none;
+  font: 700 11px 'Be Vietnam Pro';
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.product-add {
+  display: inline-grid;
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+  place-items: center;
+}
+
+.product-contact { padding: 0 12px; }
+.product-cart-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.9; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; clip-path: inset(50%); }
+.product-add:hover,.product-contact:hover { background: var(--wine); border-color: var(--wine); }
+
+.view-link {
+  margin-top: 14px;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+#cartItems { min-height: 0; overflow: auto; padding-right: 2px; }
+
+.cart-item {
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.cart-thumb {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  overflow: hidden;
+  place-items: center;
+  background: var(--swatch, #eee5d4);
+}
+
+.cart-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.cart-item h3 { font-size: 12px; }
+.cart-item p { margin: 2px 0 4px; }
+.cart-line-total { display: block; margin-top: 4px; color: var(--ink); font-size: 11px; font-weight: 700; }
+.cart-item .remove { align-self: start; padding: 2px 0; }
+
+.checkout-summary {
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  background: #fbf8f2;
+}
+
+.checkout-summary-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.checkout-summary-head h3 { margin: 0; font-size: 14px; }
+.checkout-summary-head button { border: 0; border-bottom: 1px solid var(--ink); padding: 0 0 2px; background: none; color: var(--ink); font: 700 11px 'Be Vietnam Pro'; cursor: pointer; }
+.checkout-summary-item { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid rgba(222, 214, 201, .75); }
+.checkout-summary-item img,.checkout-summary-thumb { width: 42px; height: 42px; object-fit: contain; background: var(--swatch, #eee5d4); }
+.checkout-summary-item b { display: block; overflow: hidden; font-size: 11px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.checkout-summary-item span { display: block; margin-top: 1px; color: var(--muted); font-size: 10px; }
+.checkout-summary-item strong { font-size: 11px; white-space: nowrap; }
+.checkout-summary-total { display: grid; gap: 5px; margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.checkout-summary-total > div { display: flex; justify-content: space-between; gap: 15px; color: var(--muted); font-size: 11px; }
+.checkout-summary-total > div:last-child { padding-top: 6px; color: var(--ink); font-size: 13px; font-weight: 800; }
+.checkout-summary-empty { margin: 0; color: var(--muted); font-size: 12px; }
+
+.detail-description { white-space: pre-line; }
+.detail-meta { margin: 10px 0 0; color: var(--muted); font-size: 11px; }
+.detail-actions .button { min-height: 42px; }
+
+@media (min-width: 1280px) {
+  .products:not([data-product-count="1"]):not([data-product-count="2"]) { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+}
+
+@media (min-width: 761px) and (max-width: 1024px) {
+  .products:not([data-product-count="1"]) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+@media (max-width: 760px) {
+  .hero { padding: 24px 6vw 16px; }
+  .hero h1 { font-size: clamp(46px, var(--admin-hero-title-size, 54px), 56px) !important; }
+  .hero .intro { font-size: clamp(14px, var(--admin-hero-intro-size, 15px), 17px) !important; }
+  .hero-art { height: 210px; min-height: 0; margin-top: 16px; }
+  .official-hero img { object-fit: contain; }
+  .hero-promotion { margin-top: 12px; }
+  .hero .note { margin-top: 9px; }
+
+  .products { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px; }
+  .products[data-product-count="1"] { grid-template-columns: minmax(0, 1fr) !important; }
+  .products[data-product-count="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .product-media { aspect-ratio: 1.2 / 1; }
+  .product-official-image { padding: 7px; }
+  .product-info { padding: 13px; }
+  .product-info h3 { min-height: 36px; font-size: clamp(13px, var(--admin-product-title-size, 14px), 16px) !important; }
+  .product-meta { min-height: 15px; font-size: 9px; }
+  .product-info > p:not(.product-meta) { min-height: 34px; margin: 5px 0 11px; font-size: 11px; line-height: 1.5; }
+  .product-bottom { min-height: 45px; padding-top: 10px; }
+  .price { font-size: 13px; }
+  .product-add,.product-contact { min-height: 42px; font-size: 10px; }
+  .product-add { width: 42px; min-width: 42px; }
+  .product-contact { padding: 0 10px; }
+  .view-link { margin-top: 11px; font-size: 10px; }
+
+  .checkout-summary { margin-bottom: 20px; padding: 14px; }
+  .checkout-summary-item { grid-template-columns: 38px minmax(0, 1fr) auto; }
+  .checkout-summary-item img,.checkout-summary-thumb { width: 38px; height: 38px; }
+  .cart-drawer #cartItems { padding-bottom: 8px; }
+}
+
+@media (max-width: 480px) {
+  .products,.products[data-product-count="2"] { grid-template-columns: minmax(0, 1fr) !important; }
+  .product-media { aspect-ratio: 1.5 / 1; }
+  .product-info { padding: 15px; }
+  .product-info h3 { min-height: auto; font-size: clamp(16px, var(--admin-product-title-size, 17px), 19px) !important; }
+  .product-meta { min-height: auto; font-size: 10px; }
+  .product-info > p:not(.product-meta) { min-height: auto; font-size: 12px; }
+  .product-bottom { min-height: 48px; }
+  .price { font-size: 15px; }
+  .product-add,.product-contact { min-height: 44px; font-size: 11px; }
+  .product-add { width: 44px; min-width: 44px; }
+  .product-contact { padding: 0 14px; }
+}

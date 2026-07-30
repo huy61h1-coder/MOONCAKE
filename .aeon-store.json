@@ -1,0 +1,67 @@
+{
+  "aeon-products": [
+    {
+      "name": "HỘP BÁNH TRUNG THU LÔI CUỐN 2 120GX5",
+      "price": 1450000,
+      "description": "MAISON",
+      "label": "MAISON",
+      "weight": "",
+      "ingredients": "",
+      "sku": "",
+      "details": "HỘP BÁNH GỒM:\nThập cẩm 120G\nSen hạt dẻ 120G\nMè đen óc chó 120G\nCustard 120G\nHạt sen trứng muối 120G\n01 hộp hồng trà cổ thụ mật 30G\n01 thức uống 300ml",
+      "image": "/assets/uploads/1785377895089-trung-thu-2026-conv-5.png",
+      "bg": "#e9c38b",
+      "box": "#8f1834",
+      "id": "sp-1785335062329",
+      "variants": [
+        {
+          "id": "variant-1785362052583-l57upe",
+          "name": "LÔI CUỐN 2 120GX5",
+          "price": 1450000,
+          "sku": ""
+        }
+      ],
+      "brand": "Maison"
+    },
+    {
+      "name": "HỘP BÁNH TRUNG THU KHÁT VỌNG 120GX6",
+      "price": 2500000,
+      "label": "",
+      "brand": "Maison",
+      "description": "MAISON",
+      "details": "HỘP BÁNH GỒM:\nThập cẩm 120G\nCustard 120G\nSen trà xanh 120g\nMè đen óc chó 120G\nSen hạt dẻ 120G\nHạt sen trứng muối 120G\n01 hộp hồng trà cổ thụ mật 30G 01 thức uống 750ml",
+      "weight": "",
+      "ingredients": "",
+      "sku": "",
+      "variants": [],
+      "image": "/assets/uploads/1785377977215-trung-thu-2026-conv-6.png",
+      "bg": "#e9c38b",
+      "box": "#8f1834",
+      "id": "sp-1785377981203-q8o1u"
+    },
+    {
+      "name": "HỘP BÁNH TRUNG THU THƯỢNG UYỂN 120GX8",
+      "price": 1250000,
+      "label": "",
+      "brand": "Maison",
+      "description": "MAISON",
+      "details": "HỘP BÁNH GỒM:\nThập cẩm 120G\nCustard 120G\nMơ tây 120G\nMè đen óc chó 120G\nHạt sen trứng muối 120G Sen hạt dẻ 120G\nĐậu đỏ 120G\nSen trà xanh 120G\n01 trà phổ nhĩ tiến vua 100g",
+      "weight": "",
+      "ingredients": "",
+      "sku": "",
+      "variants": [],
+      "image": "/assets/uploads/1785378050725-trung-thu-2026-conv-7.png",
+      "bg": "#e9c38b",
+      "box": "#8f1834",
+      "id": "sp-1785378052052-zljnu"
+    }
+  ],
+  "aeon-ui": {
+    "eyebrow": "MÙA TRĂNG 2026",
+    "title": "Trọn vị\nđoàn viên",
+    "intro": "Tuyển chọn hương vị tinh tế trong những hộp quà thanh lịch, để mỗi khoảnh khắc sum vầy đều thật đáng nhớ.",
+    "collectionTitle": "Danh mục\nđang cập nhật.",
+    "collectionNote": "Sản phẩm, giá bán và hình ảnh sẽ được công bố chính thức trong thời gian tới.",
+    "heroImage": "/assets/uploads/1785379162078-AEON-AUTUMNVERSE-2026_compressed-pdf.png"
+  }
+}

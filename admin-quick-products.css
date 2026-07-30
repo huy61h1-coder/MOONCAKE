@@ -1,0 +1,34 @@
+.quick-product-manager{margin-bottom:20px}
+.quick-product-head{display:flex;justify-content:space-between;gap:24px;align-items:flex-start}
+.quick-product-head .eyebrow{margin:0 0 7px}
+.quick-product-head h2{margin:0 0 8px}
+.quick-product-head p:not(.eyebrow){max-width:650px;margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+.quick-product-actions{display:flex;gap:10px;align-items:center;flex:0 0 auto}
+.quick-product-actions .secondary-button{margin:0}
+.quick-product-list{display:grid;gap:12px;margin-top:20px}
+.quick-product-row{border:1px solid var(--line);padding:16px;background:#fff}
+.quick-product-row>header{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}
+.quick-product-row>header>div:first-child{min-width:0}
+.quick-product-row strong{display:block;margin-top:4px;font-size:14px;overflow-wrap:anywhere}
+.quick-product-row strong+small{display:block;margin-top:3px;color:var(--muted);font-size:10px;font-weight:500;line-height:1.35}
+.quick-product-kicker{color:var(--red);font-size:9px;font-weight:800;letter-spacing:.1em}
+.quick-row-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto}
+.quick-detail,.quick-remove{border:0;background:#f7efe9;color:var(--wine);font:600 10px 'Be Vietnam Pro';cursor:pointer}
+.quick-detail{padding:8px 10px}
+.quick-remove{width:30px;height:30px;font-size:21px;line-height:1}
+.quick-product-fields{display:grid;grid-template-columns:1.3fr .72fr .7fr;gap:12px 16px}
+.quick-product-fields label{display:block;font-size:10px;font-weight:700}
+.quick-product-fields input,.quick-product-fields textarea{width:100%;margin-top:4px}
+.quick-product-fields .wide{grid-column:1/-1}
+.quick-product-status{min-height:16px;margin:15px 0 0;color:var(--muted);font-size:11px}
+.dashboard-product-editor{margin-top:18px}
+.dashboard-product-editor .editor{margin-top:0}
+@media(max-width:760px){
+  .quick-product-head{flex-direction:column}
+  .quick-product-actions{width:100%}
+  .quick-product-actions>*{flex:1;text-align:center}
+  .quick-product-fields{grid-template-columns:1fr}
+  .quick-product-fields .wide{grid-column:auto}
+  .quick-product-row{padding:13px}
+  .quick-product-row>header{align-items:flex-start}
+}
