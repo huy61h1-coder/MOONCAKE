@@ -2,6 +2,9 @@ document.head.append(Object.assign(document.createElement('link'), {rel: 'styles
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-layout-controls.css'}));
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-import.css'}));
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-quick-products.css'}));
+document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-quote-files.css'}));
+document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-sheet-sync.css'}));
+document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-order-pdf.css'}));
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'product-variants.css'}));
 
 const credential = {username: 'admin', password: '07931548'};
@@ -132,9 +135,134 @@ function setBusy(button, busy, busyText, idleText) {
   button.textContent = busy ? busyText : idleText;
 }
 
+const officialImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
+
+function officialImageMimeType(file) {
+  const declaredType = String(file?.type || '').toLowerCase();
+  if (officialImageMimeTypes.has(declaredType)) return declaredType;
+  const filename = String(file?.name || '').toLowerCase();
+  if (/\.svg$/.test(filename)) return 'image/svg+xml';
+  if (/\.png$/.test(filename)) return 'image/png';
+  if (/\.jpe?g$/.test(filename)) return 'image/jpeg';
+  if (/\.webp$/.test(filename)) return 'image/webp';
+  if (/\.gif$/.test(filename)) return 'image/gif';
+  return '';
+}
+
+function readOfficialImageAsDataUrl(file, mimeType) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const comma = result.indexOf(',');
+      if (comma < 0) return reject(new Error('Không thể đọc tệp ảnh.'));
+      resolve('data:' + mimeType + ';base64,' + result.slice(comma + 1));
+    };
+    reader.onerror = () => reject(new Error('Không thể đọc tệp ảnh.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function uploadOfficialImage(file) {
   if (!file) return null;
-  return window.uploadAeonImage(file);
+  const mimeType = officialImageMimeType(file);
+  if (!mimeType) throw new Error('Chỉ hỗ trợ ảnh PNG, JPG, WEBP, GIF hoặc SVG.');
+  if (file.size > 10 * 1024 * 1024) throw new Error('Ảnh phải nhỏ hơn hoặc bằng 10 MB.');
+
+  const dataUrl = await readOfficialImageAsDataUrl(file, mimeType);
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: file.name, dataUrl})
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Không thể tải ảnh lên.');
+  return normaliseImageUrl(result.url);
+}
+
+function normaliseQuoteFileUrl(value, kind) {
+  const url = normaliseImageUrl(value);
+  if (!url) return '';
+  let pathname = '';
+  try {
+    pathname = new URL(url, location.origin).pathname.toLowerCase();
+  } catch {
+    throw new Error('Đường dẫn tệp báo giá không hợp lệ.');
+  }
+  const matches = kind === 'pdf' ? pathname.endsWith('.pdf') : /\.(xlsx|xls)$/.test(pathname);
+  if (!matches) throw new Error(kind === 'pdf' ? 'Tệp PDF phải có đuôi .pdf.' : 'Tệp Excel phải có đuôi .xlsx hoặc .xls.');
+  return url;
+}
+
+function quoteFileKind(file) {
+  const filename = String(file?.name || '').toLowerCase();
+  if (filename.endsWith('.pdf')) return 'pdf';
+  if (filename.endsWith('.xlsx') || filename.endsWith('.xls')) return 'excel';
+  return '';
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Không thể đọc tệp báo giá.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadQuoteFile(file, expectedKind) {
+  if (!file) throw new Error(expectedKind === 'pdf' ? 'Hãy chọn tệp PDF trước.' : 'Hãy chọn tệp Excel trước.');
+  const kind = quoteFileKind(file);
+  if (kind !== expectedKind) throw new Error(expectedKind === 'pdf' ? 'Chỉ chấp nhận tệp PDF (.pdf).' : 'Chỉ chấp nhận tệp Excel (.xlsx, .xls).');
+  if (file.size > 20 * 1024 * 1024) throw new Error('Tệp báo giá phải nhỏ hơn hoặc bằng 20 MB.');
+
+  const response = await fetch('/api/upload-quote', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: file.name, dataUrl: await readFileAsDataUrl(file)})
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Không thể tải tệp báo giá lên.');
+  return normaliseQuoteFileUrl(result.url, expectedKind);
+}
+
+async function saveQuoteFiles(patch = {}) {
+  let latestUi = {};
+  try {
+    latestUi = (await remoteState())['aeon-ui'] || {};
+  } catch {
+    latestUi = aeonStore.ui();
+  }
+  const combined = {...aeonStore.ui(), ...latestUi, ...patch};
+  const nextUi = {
+    ...combined,
+    quoteExcelUrl: normaliseQuoteFileUrl(combined.quoteExcelUrl, 'excel'),
+    quotePdfUrl: normaliseQuoteFileUrl(combined.quotePdfUrl, 'pdf')
+  };
+  await saveShared('aeon-ui', nextUi);
+
+  const confirmed = {...AEON_DEFAULT_UI, ...((await remoteState())['aeon-ui'] || {})};
+  if (confirmed.quoteExcelUrl !== nextUi.quoteExcelUrl || confirmed.quotePdfUrl !== nextUi.quotePdfUrl) {
+    throw new Error('Tệp báo giá chưa được lưu vào cấu hình. Vui lòng thử lại.');
+  }
+  return confirmed;
+}
+
+function setQuoteFileStatus(target, value, label) {
+  const element = typeof target === 'string' ? $(target) : target;
+  if (!element) return;
+  element.replaceChildren();
+  if (!value) {
+    element.textContent = `Chưa có tệp ${label}.`;
+    element.classList.add('is-empty');
+    return;
+  }
+  element.classList.remove('is-empty');
+  const link = document.createElement('a');
+  link.href = value;
+  link.download = '';
+  link.textContent = `Tải thử tệp ${label} đang dùng ↗`;
+  element.append(link);
 }
 
 async function saveShared(key, value) {
@@ -147,12 +275,9 @@ async function saveShared(key, value) {
 }
 
 async function remoteState() {
-  const supabase = window.getAeonSupabase();
-  const {data, error} = await supabase.from('aeon_state').select('key,value');
-  if (error) throw new Error('Không thể kiểm tra dữ liệu đã lưu trên máy chủ.');
-  const state = {};
-  (data || []).forEach(row => { state[row.key] = row.value; });
-  return state;
+  const response = await fetch('/api/state', {cache: 'no-store'});
+  if (!response.ok) throw new Error('Không thể kiểm tra dữ liệu đã lưu trên máy chủ.');
+  return response.json();
 }
 
 function sameImage(left, right) {
@@ -184,6 +309,53 @@ async function saveHeroImage(value) {
   return heroImage;
 }
 
+function cleanLogoText(value, fallback = '', limit = 40, preserveLines = false) {
+  const source = String(value ?? '').replace(/\r\n?/g, '\n');
+  const cleaned = preserveLines
+    ? source
+        .split('\n')
+        .slice(0, 2)
+        .map(line => line.replace(/[^\S\n]+/g, ' ').trim())
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+    : source.replace(/\s+/g, ' ').trim();
+  return cleaned.slice(0, limit) || fallback;
+}
+
+function normaliseLogoMode(value) {
+  return ['text', 'image', 'image-subtitle'].includes(String(value || '')) ? String(value) : AEON_DEFAULT_UI.logoMode;
+}
+
+async function saveLogoSettings(patch = {}) {
+  let latestUi = {};
+  try {
+    latestUi = (await remoteState())['aeon-ui'] || {};
+  } catch {
+    latestUi = aeonStore.ui();
+  }
+
+  const combined = {...aeonStore.ui(), ...latestUi, ...patch};
+  const nextUi = {
+    ...combined,
+    logoText: cleanLogoText(combined.logoText, AEON_DEFAULT_UI.logoText, 32),
+    logoSubtitle: cleanLogoText(combined.logoSubtitle, '', 80, true),
+    logoMode: normaliseLogoMode(combined.logoMode),
+    logoImage: normaliseImageUrl(combined.logoImage)
+  };
+  await saveShared('aeon-ui', nextUi);
+
+  const confirmed = {...AEON_DEFAULT_UI, ...((await remoteState())['aeon-ui'] || {})};
+  const isSaved = confirmed.logoText === nextUi.logoText
+    && confirmed.logoSubtitle === nextUi.logoSubtitle
+    && confirmed.logoMode === nextUi.logoMode
+    && sameImage(confirmed.logoImage, nextUi.logoImage);
+  if (!isSaved) throw new Error('Thiết lập logo chưa được lưu trên máy chủ. Vui lòng thử lại.');
+
+  renderAeonBrandLogos(confirmed);
+  return confirmed;
+}
+
 function isAuthed() {
   return aeonStore.isAdminSession();
 }
@@ -191,6 +363,7 @@ function isAuthed() {
 function showApp() {
   const login = $('#loginView');
   const app = $('#adminApp');
+  renderAeonBrandLogos(aeonStore.ui());
   login.hidden = true;
   login.style.display = 'none';
   app.hidden = false;
@@ -609,12 +782,12 @@ function renderImportPreview(target, analysis, products) {
 function productPanel(panel) {
   const products = aeonStore.products();
   panel.innerHTML = `
-    <div class="panel-action"><p>Thêm, sửa hoặc xóa sản phẩm. Thay đổi hiển thị ngay tại cửa hàng.</p><div class="panel-action-buttons"><button class="secondary-button" id="importProducts">Nhập từ tệp</button><button class="button primary" id="newProduct">+ Thêm sản phẩm</button></div></div>
+    <div class="panel-action"><p>Thêm, sửa hoặc xóa sản phẩm. Thay đổi hiển thị ngay tại cửa hàng.</p><div class="panel-action-buttons"><button class="secondary-button" id="downloadProductTemplate" type="button">Tải mẫu Excel</button><button class="secondary-button" id="importProducts" type="button">Nhập từ tệp</button><button class="button primary" id="newProduct">+ Thêm sản phẩm</button></div></div>
     <section class="admin-card import-products" id="productImportPanel" hidden aria-labelledby="productImportTitle">
-      <div class="import-intro"><div><p class="eyebrow">NHẬP DANH MỤC</p><h2 id="productImportTitle">Phân tích sản phẩm từ tệp</h2><p>Hỗ trợ Excel (.xlsx, .xls, .csv), PDF và ảnh. Kiểm tra hoặc sửa tên, giá và thành phần trong bản nháp trước khi lưu.</p></div><button class="import-close" type="button" id="closeProductImport" aria-label="Đóng khu vực nhập tệp">×</button></div>
+      <div class="import-intro"><div><p class="eyebrow">NHẬP DANH MỤC</p><h2 id="productImportTitle">Phân tích sản phẩm từ tệp</h2><p>Hỗ trợ Excel (.xlsx, .xls, .csv), PDF và ảnh. Với Excel, hãy tải mẫu để dùng đúng tên cột; kiểm tra hoặc sửa bản nháp trước khi lưu.</p></div><button class="import-close" type="button" id="closeProductImport" aria-label="Đóng khu vực nhập tệp">×</button></div>
       <form class="import-form" id="productImportForm">
         <label class="import-dropzone" for="importProductFile"><span>Chọn tệp danh mục hoặc báo giá</span><small>Excel, PDF, PNG, JPG, WEBP hoặc GIF · tối đa 15 MB</small><input id="importProductFile" type="file" accept=".xlsx,.xls,.csv,.pdf,image/png,image/jpeg,image/webp,image/gif" required></label>
-        <div class="import-actions"><p id="importFileName" aria-live="polite">Chưa chọn tệp.</p><button class="button primary" id="analyseProductFile" type="submit">Phân tích tệp</button></div>
+        <div class="import-actions"><p id="importFileName" aria-live="polite">Chưa chọn tệp.</p><div class="panel-action-buttons"><button class="secondary-button" id="downloadProductTemplateInline" type="button">Tải mẫu Excel</button><button class="button primary" id="analyseProductFile" type="submit">Phân tích tệp</button></div></div>
       </form>
       <div class="import-results" id="importResults" aria-live="polite"></div>
     </section>
@@ -623,6 +796,7 @@ function productPanel(panel) {
     </section>
     <div id="productEditor"></div>`;
   $('#newProduct').onclick = () => openProductEditor();
+  $('#downloadProductTemplate').onclick = () => downloadProductTemplate($('#downloadProductTemplate'));
   const importPanel = $('#productImportPanel');
   const importResults = $('#importResults');
   $('#importProducts').onclick = () => {
@@ -630,6 +804,7 @@ function productPanel(panel) {
     $('#importProductFile').focus();
   };
   $('#closeProductImport').onclick = () => { importPanel.hidden = true; };
+  $('#downloadProductTemplateInline').onclick = () => downloadProductTemplate($('#downloadProductTemplateInline'));
   $('#importProductFile').onchange = event => {
     const file = event.currentTarget.files[0];
     $('#importFileName').textContent = file ? `${file.name} · ${Math.ceil(file.size / 1024)} KB` : 'Chưa chọn tệp.';
@@ -651,6 +826,32 @@ function productPanel(panel) {
   document.querySelectorAll('.edit-product').forEach(button => {
     button.onclick = () => openProductEditor(button.dataset.id);
   });
+}
+
+async function downloadProductTemplate(button) {
+  try {
+    setBusy(button, true, 'Đang tạo mẫu...', 'Tải mẫu Excel');
+    const response = await fetch('/api/template/products.xlsx', {cache: 'no-store'});
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      throw new Error(result.error || 'Không thể tạo mẫu Excel.');
+    }
+    const file = await response.blob();
+    if (!file.size) throw new Error('Mẫu Excel chưa có dữ liệu hợp lệ.');
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'mau-nhap-danh-sach-san-pham.xlsx';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toastAdmin('Đã tải mẫu Excel nhập danh sách sản phẩm.');
+  } catch (error) {
+    toastAdmin(error.message);
+  } finally {
+    setBusy(button, false, 'Đang tạo mẫu...', 'Tải mẫu Excel');
+  }
 }
 
 function openProductEditor(id, options = {}) {
@@ -721,8 +922,8 @@ function openProductEditor(id, options = {}) {
           <label>Mã sản phẩm<input name="sku" value="${escapeHtml(existing.sku || '')}" placeholder="Ví dụ: AM-2026-01"></label>
           <fieldset class="product-variant-editor image-path"><legend>Lựa chọn sản phẩm</legend><p>Một hình có thể đại diện nhiều loại hàng. Khách sẽ chọn loại trước khi thêm vào giỏ.</p><div class="product-variant-rows" data-variant-rows>${editorVariants.map(productVariantRowMarkup).join('')}</div><button class="secondary-button" type="button" data-add-variant>+ Thêm lựa chọn</button></fieldset>
           <div class="richtext-field image-path"><span class="richtext-label">Chi tiết sản phẩm</span>${AEONRichText.editorMarkup({name: 'details', value: existing.details || '', rows: 8, placeholder: 'Thông tin hiển thị trong trang chi tiết'})}</div>
-          <label class="image-path">Đường dẫn ảnh<input name="image" value="${escapeHtml(existing.image || '')}" placeholder="https://... hoặc assets/uploads/..."></label>
-          <label class="upload-field">Tải ảnh từ máy<input id="productImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><button class="secondary-button" id="uploadProductImage" type="button">Tải ảnh lên</button></label>
+          <label class="image-path">Đường dẫn ảnh<input name="image" value="${escapeHtml(existing.image || '')}" placeholder="https://... hoặc /assets/uploads/ten-anh.png"></label>
+          <div class="upload-field image-path"><label for="productImageFile">Tải ảnh từ máy (lưu tại /assets/uploads)</label><input id="productImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg"><button class="secondary-button" id="uploadProductImage" type="button">Tải ảnh lên</button></div>
           <label>Màu nền khi chưa có ảnh<input name="bg" type="color" value="${existing.bg}"></label>
           <label>Màu hộp khi chưa có ảnh<input name="box" type="color" value="${existing.box}"></label>
         </div>
@@ -807,15 +1008,22 @@ function interfacePanel(panel) {
       <p>Những nội dung này xuất hiện ở trang chủ. Dùng xuống dòng để ngắt hàng tiêu đề.</p>
       <form id="uiForm">
         <div class="admin-form-grid one">
+          <label>Tên logo<input name="logoText" maxlength="32" required value="${escapeHtml(ui.logoText)}" placeholder="Ví dụ: AEON"></label>
+          <label>Dòng phụ logo<textarea name="logoSubtitle" maxlength="80" rows="2" placeholder="Ví dụ: BÌNH DƯƠNG&#10;NEW CITY">${escapeHtml(ui.logoSubtitle || '')}</textarea><small>Có thể nhấn Enter để xuống dòng.</small></label>
+          <label>Kiểu hiển thị logo<select name="logoMode"><option value="text"${ui.logoMode === 'text' ? ' selected' : ''}>Logo chữ</option><option value="image"${ui.logoMode === 'image' ? ' selected' : ''}>Chỉ dùng ảnh logo</option><option value="image-subtitle"${ui.logoMode === 'image-subtitle' ? ' selected' : ''}>Ảnh logo và dòng phụ</option></select></label>
           <label>Nhãn chiến dịch<input name="eyebrow" required value="${escapeHtml(ui.eyebrow)}"></label>
           <label>Tiêu đề hero<textarea name="title" required rows="2">${escapeHtml(ui.title)}</textarea></label>
           <label>Giới thiệu hero<textarea name="intro" required rows="3">${escapeHtml(ui.intro)}</textarea></label>
+          <label>Tiêu đề khu vực ưu đãi<input name="promotionTitle" maxlength="80" required value="${escapeHtml(ui.promotionTitle)}"></label>
+          <label>Nội dung ưu đãi mùa trăng<textarea name="promotionText" maxlength="400" required rows="5">${escapeHtml(ui.promotionText)}</textarea><small>Có thể nhấn Enter để xuống dòng; nội dung sẽ hiển thị đúng từng dòng trên trang chủ.</small></label>
         </div>
         <button class="button primary" type="submit">Lưu giao diện</button>
       </form>
     </section>`;
   $('#uiForm').onsubmit = async event => {
     event.preventDefault();
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form));
     try {
       let latestUi = {};
       try {
@@ -823,7 +1031,16 @@ function interfacePanel(panel) {
       } catch {
         latestUi = aeonStore.ui();
       }
-      await saveShared('aeon-ui', {...aeonStore.ui(), ...latestUi, ...Object.fromEntries(new FormData(event.currentTarget))});
+      const nextUi = {
+        ...aeonStore.ui(),
+        ...latestUi,
+        ...values,
+        logoText: cleanLogoText(values.logoText, AEON_DEFAULT_UI.logoText, 32),
+        logoSubtitle: cleanLogoText(values.logoSubtitle, '', 80, true),
+        logoMode: normaliseLogoMode(values.logoMode)
+      };
+      await saveShared('aeon-ui', nextUi);
+      renderAeonBrandLogos(nextUi);
       toastAdmin('Đã lưu nội dung giao diện và đồng bộ website.');
     } catch (error) {
       toastAdmin(error.message);
@@ -840,13 +1057,74 @@ function assetPanel(panel) {
   });
 
   panel.insertAdjacentHTML('beforeend', `
+    <section class="admin-card editor asset-editor logo-asset-editor">
+      <p class="eyebrow">NHẬN DIỆN THƯƠNG HIỆU</p>
+      <h2>Ảnh logo</h2>
+      <p>Tải logo từ máy hoặc dán đường dẫn ảnh online. Nếu có ảnh logo, hệ thống sẽ dùng ảnh này trên trang bán hàng và trang quản trị.</p>
+      <form id="logoAssetForm">
+        <label>Đường dẫn ảnh logo<input name="logoImage" value="${escapeHtml(ui.logoImage || '')}" placeholder="https://... hoặc /assets/uploads/logo.png"></label>
+        <div class="upload-field"><label for="logoImageFile">Tải ảnh logo từ máy (PNG, JPG, WEBP, GIF hoặc SVG)</label><input id="logoImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg"><button class="secondary-button" id="uploadLogoImage" type="button">Tải và dùng logo</button></div>
+        <div class="asset-preview logo-preview" id="logoPreview" aria-live="polite"></div>
+        <div class="editor-actions"><button class="button primary" type="submit">Lưu ảnh logo</button><button class="danger" type="button" id="clearLogoImage">Bỏ ảnh logo</button></div>
+      </form>
+    </section>`);
+
+  const logoForm = $('#logoAssetForm');
+  setPreview($('#logoPreview'), ui.logoImage, 'Chưa chọn ảnh logo');
+  logoForm.elements.logoImage.addEventListener('input', () => setPreview($('#logoPreview'), logoForm.elements.logoImage.value, 'Chưa chọn ảnh logo'));
+
+  $('#uploadLogoImage').onclick = async () => {
+    const button = $('#uploadLogoImage');
+    try {
+      setBusy(button, true, 'Đang tải và lưu...', 'Tải và dùng logo');
+      const url = await uploadOfficialImage($('#logoImageFile').files[0]);
+      if (!url) throw new Error('Hãy chọn ảnh logo trước khi tải lên.');
+      logoForm.elements.logoImage.value = url;
+      const currentMode = normaliseLogoMode(aeonStore.ui().logoMode);
+      const saved = await saveLogoSettings({logoImage: url, logoMode: currentMode === 'text' ? 'image' : currentMode});
+      logoForm.elements.logoImage.value = saved.logoImage;
+      setPreview($('#logoPreview'), saved.logoImage, 'Chưa chọn ảnh logo');
+      toastAdmin('Đã lưu ảnh logo và đồng bộ website.');
+    } catch (error) {
+      toastAdmin(error.message);
+    } finally {
+      setBusy(button, false, 'Đang tải và lưu...', 'Tải và dùng logo');
+    }
+  };
+
+  logoForm.onsubmit = async event => {
+    event.preventDefault();
+    try {
+      const image = normaliseImageUrl(logoForm.elements.logoImage.value);
+      const currentMode = normaliseLogoMode(aeonStore.ui().logoMode);
+      const saved = await saveLogoSettings({logoImage: image, logoMode: image && currentMode === 'text' ? 'image' : currentMode});
+      logoForm.elements.logoImage.value = saved.logoImage;
+      setPreview($('#logoPreview'), saved.logoImage, 'Chưa chọn ảnh logo');
+      toastAdmin('Đã lưu ảnh logo và đồng bộ website.');
+    } catch (error) {
+      toastAdmin(error.message);
+    }
+  };
+
+  $('#clearLogoImage').onclick = async () => {
+    try {
+      await saveLogoSettings({logoImage: ''});
+      logoForm.elements.logoImage.value = '';
+      setPreview($('#logoPreview'), '', 'Chưa chọn ảnh logo');
+      toastAdmin('Đã bỏ ảnh logo. Website sẽ dùng logo chữ.');
+    } catch (error) {
+      toastAdmin(error.message);
+    }
+  };
+
+  panel.insertAdjacentHTML('beforeend', `
     <section class="admin-card editor asset-editor">
       <p class="eyebrow">HÌNH ẢNH CHÍNH THỨC</p>
       <h2>Ảnh banner đầu trang</h2>
       <p>Ảnh chỉ được báo thành công sau khi đã lưu vào máy chủ. Chọn ảnh từ máy, dán đường dẫn online, hoặc dùng lại ảnh sản phẩm.</p>
       <form id="assetForm">
-        <label>Đường dẫn ảnh banner<input name="heroImage" value="${escapeHtml(ui.heroImage || '')}" placeholder="https://... hoặc assets/uploads/..."></label>
-        <label class="upload-field">Tải ảnh banner từ máy<input id="heroImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><button class="secondary-button" id="uploadHeroImage" type="button">Tải và lưu banner</button></label>
+        <label>Đường dẫn ảnh banner<input name="heroImage" value="${escapeHtml(ui.heroImage || '')}" placeholder="https://... hoặc /assets/uploads/ten-banner.png"></label>
+        <div class="upload-field"><label for="heroImageFile">Tải ảnh banner từ máy (PNG, JPG, WEBP, GIF hoặc SVG)</label><input id="heroImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg"><button class="secondary-button" id="uploadHeroImage" type="button">Tải và lưu banner</button></div>
         ${sourceImages.length ? `<label class="saved-image-picker">Dùng ảnh đã tải lên trong sản phẩm<select id="savedHeroImage"><option value="">Chọn ảnh sản phẩm…</option>${sourceImages.map(item => `<option value="${escapeHtml(item.image)}">${escapeHtml(item.name)}</option>`).join('')}</select></label><button class="secondary-button" id="useSavedHeroImage" type="button">Dùng ảnh đã chọn làm banner</button>` : ''}
         <div class="asset-preview" id="heroPreview" aria-live="polite"></div>
         <div class="editor-actions"><button class="button primary" type="submit">Lưu ảnh banner</button><button class="danger" type="button" id="clearHeroImage">Bỏ ảnh</button></div>
@@ -912,6 +1190,108 @@ function assetPanel(panel) {
       toastAdmin(error.message);
     }
   };
+
+  panel.insertAdjacentHTML('beforeend', `
+    <section class="admin-card editor asset-editor quote-file-editor">
+      <p class="eyebrow">FILE BÁO GIÁ</p>
+      <h2>Excel và PDF tải xuống</h2>
+      <p>Tải lên tối đa một tệp Excel và một tệp PDF. Nút báo giá trên trang chủ sẽ cho khách chọn định dạng đang có.</p>
+      <form id="quoteAssetForm">
+        <div class="quote-file-grid">
+          <section class="quote-file-card">
+            <h3>File Excel</h3>
+            <label>Đường dẫn tệp Excel<input name="quoteExcelUrl" value="${escapeHtml(ui.quoteExcelUrl || '')}" placeholder="/assets/uploads/quotes/bao-gia.xlsx"></label>
+            <div class="upload-field"><label for="quoteExcelFile">Chọn tệp Excel (.xlsx hoặc .xls, tối đa 20 MB)</label><input id="quoteExcelFile" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"><button class="secondary-button" id="uploadQuoteExcel" type="button">Tải Excel lên</button></div>
+            <p class="quote-file-status" id="quoteExcelStatus" aria-live="polite"></p>
+            <button class="danger quote-clear-file" id="clearQuoteExcel" type="button">Bỏ file Excel</button>
+          </section>
+          <section class="quote-file-card">
+            <h3>File PDF</h3>
+            <label>Đường dẫn tệp PDF<input name="quotePdfUrl" value="${escapeHtml(ui.quotePdfUrl || '')}" placeholder="/assets/uploads/quotes/bao-gia.pdf"></label>
+            <div class="upload-field"><label for="quotePdfFile">Chọn tệp PDF (.pdf, tối đa 20 MB)</label><input id="quotePdfFile" type="file" accept=".pdf,application/pdf"><button class="secondary-button" id="uploadQuotePdf" type="button">Tải PDF lên</button></div>
+            <p class="quote-file-status" id="quotePdfStatus" aria-live="polite"></p>
+            <button class="danger quote-clear-file" id="clearQuotePdf" type="button">Bỏ file PDF</button>
+          </section>
+        </div>
+        <button class="button primary" type="submit">Lưu đường dẫn file báo giá</button>
+      </form>
+    </section>`);
+
+  const quoteForm = $('#quoteAssetForm');
+  const syncQuoteForm = saved => {
+    quoteForm.elements.quoteExcelUrl.value = saved.quoteExcelUrl || '';
+    quoteForm.elements.quotePdfUrl.value = saved.quotePdfUrl || '';
+    setQuoteFileStatus($('#quoteExcelStatus'), saved.quoteExcelUrl, 'Excel');
+    setQuoteFileStatus($('#quotePdfStatus'), saved.quotePdfUrl, 'PDF');
+  };
+  syncQuoteForm(ui);
+
+  $('#uploadQuoteExcel').onclick = async () => {
+    const button = $('#uploadQuoteExcel');
+    try {
+      setBusy(button, true, 'Đang tải Excel...', 'Tải Excel lên');
+      const url = await uploadQuoteFile($('#quoteExcelFile').files[0], 'excel');
+      const saved = await saveQuoteFiles({quoteExcelUrl: url});
+      syncQuoteForm(saved);
+      toastAdmin('Đã tải và lưu file báo giá Excel.');
+    } catch (error) {
+      toastAdmin(error.message);
+    } finally {
+      setBusy(button, false, 'Đang tải Excel...', 'Tải Excel lên');
+    }
+  };
+
+  $('#uploadQuotePdf').onclick = async () => {
+    const button = $('#uploadQuotePdf');
+    try {
+      setBusy(button, true, 'Đang tải PDF...', 'Tải PDF lên');
+      const url = await uploadQuoteFile($('#quotePdfFile').files[0], 'pdf');
+      const saved = await saveQuoteFiles({quotePdfUrl: url});
+      syncQuoteForm(saved);
+      toastAdmin('Đã tải và lưu file báo giá PDF.');
+    } catch (error) {
+      toastAdmin(error.message);
+    } finally {
+      setBusy(button, false, 'Đang tải PDF...', 'Tải PDF lên');
+    }
+  };
+
+  quoteForm.onsubmit = async event => {
+    event.preventDefault();
+    try {
+      const saved = await saveQuoteFiles({
+        quoteExcelUrl: quoteForm.elements.quoteExcelUrl.value,
+        quotePdfUrl: quoteForm.elements.quotePdfUrl.value
+      });
+      syncQuoteForm(saved);
+      toastAdmin('Đã lưu các file báo giá và đồng bộ website.');
+    } catch (error) {
+      toastAdmin(error.message);
+    }
+  };
+
+  $('#clearQuoteExcel').onclick = async () => {
+    try {
+      syncQuoteForm(await saveQuoteFiles({quoteExcelUrl: ''}));
+      toastAdmin('Đã bỏ file báo giá Excel.');
+    } catch (error) {
+      toastAdmin(error.message);
+    }
+  };
+
+  $('#clearQuotePdf').onclick = async () => {
+    try {
+      syncQuoteForm(await saveQuoteFiles({quotePdfUrl: ''}));
+      toastAdmin('Đã bỏ file báo giá PDF.');
+    } catch (error) {
+      toastAdmin(error.message);
+    }
+  };
+}
+
+function formatLayoutBannerRatio(value) {
+  const ratio = Number(value) || AEON_DEFAULT_LAYOUT.bannerAspectRatio;
+  return `${ratio.toFixed(2).replace(/\.?0+$/, '')}:1`;
 }
 
 function layoutPanel(panel) {
@@ -923,15 +1303,27 @@ function layoutPanel(panel) {
     ${stretch ? `<option value="stretch" ${value === 'stretch' ? 'selected' : ''}>Toàn chiều rộng</option>` : ''}`;
   panel.insertAdjacentHTML('beforeend', `
     <section class="admin-card editor layout-editor">
-      <p class="eyebrow">BỐ CỤC & CHỮ</p>
-      <h2>Điều chỉnh hiển thị</h2>
-      <p>Thiết lập cỡ chữ và vị trí nút cho từng khu vực. Áp dụng trên website ở cùng trình duyệt.</p>
+      <p class="eyebrow">MÀU SẮC, BỐ CỤC & CHỮ</p>
+      <h2>Điều chỉnh giao diện</h2>
+      <p>Đổi màu chủ đạo, màu nền và kích thước từng khu vực. Các thay đổi cũng có thể chỉnh nhanh ngay trên màn hình chính khi đang đăng nhập.</p>
       <form id="layoutForm">
         <div class="admin-form-grid">
-          <label>Cỡ tiêu đề hero <output data-output="heroTitleSize">${layout.heroTitleSize}px</output><input class="layout-range" type="range" name="heroTitleSize" min="42" max="90" step="1" value="${layout.heroTitleSize}"></label>
+          <label>Màu chủ đạo<input name="accentColor" type="color" value="${layout.accentColor}"></label>
+          <label>Màu chủ đạo đậm<input name="accentDarkColor" type="color" value="${layout.accentDarkColor}"></label>
+          <label>Màu nền trang<input name="pageBackgroundColor" type="color" value="${layout.pageBackgroundColor}"></label>
+          <label>Màu nền khu vực nội dung<input name="sectionBackgroundColor" type="color" value="${layout.sectionBackgroundColor}"></label>
+          <label>Màu chữ chính<input name="textColor" type="color" value="${layout.textColor}"></label>
+          <label>Cỡ tiêu đề hero <output data-output="heroTitleSize">${layout.heroTitleSize}px</output><input class="layout-range" type="range" name="heroTitleSize" min="10" max="90" step="1" value="${layout.heroTitleSize}"></label>
           <label>Cỡ mô tả hero <output data-output="heroIntroSize">${layout.heroIntroSize}px</output><input class="layout-range" type="range" name="heroIntroSize" min="12" max="22" step="1" value="${layout.heroIntroSize}"></label>
+          <label>Tỷ lệ banner desktop (chỉ đổi chiều ngang) <output data-output="bannerAspectRatio">${formatLayoutBannerRatio(layout.bannerAspectRatio)}</output><input class="layout-range" type="range" name="bannerAspectRatio" min="1.5" max="4" step="any" value="${layout.bannerAspectRatio}" data-output-format="ratio"></label>
           <label>Vị trí nút hero<select name="heroButtonAlign">${alignOptions(layout.heroButtonAlign)}</select></label>
           <label>Cỡ tên sản phẩm <output data-output="productTitleSize">${layout.productTitleSize}px</output><input class="layout-range" type="range" name="productTitleSize" min="12" max="24" step="1" value="${layout.productTitleSize}"></label>
+          <label>Chiều cao thanh đầu trang <output data-output="headerHeight">${layout.headerHeight}px</output><input class="layout-range" type="range" name="headerHeight" min="10" max="112" step="1" value="${layout.headerHeight}"></label>
+          <label>Chiều cao hero <output data-output="heroHeight">${layout.heroHeight ? `${layout.heroHeight}px` : 'Tự động'}</output><input class="layout-range" type="range" name="heroHeight" min="0" max="700" step="10" value="${layout.heroHeight}" data-auto-label="Tự động"></label>
+          <label>Khoảng cách đầu/cuối các khu vực <output data-output="sectionSpacing">${layout.sectionSpacing ? `${layout.sectionSpacing}px` : 'Tự động'}</output><input class="layout-range" type="range" name="sectionSpacing" min="0" max="170" step="5" value="${layout.sectionSpacing}" data-auto-label="Tự động"></label>
+          <label>Chiều cao ảnh sản phẩm <output data-output="productImageHeight">${layout.productImageHeight ? `${layout.productImageHeight}px` : 'Tự động'}</output><input class="layout-range" type="range" name="productImageHeight" min="0" max="480" step="10" value="${layout.productImageHeight}" data-auto-label="Tự động"></label>
+          <label>Số cột sản phẩm trên desktop<select name="productColumns"><option value="0"${Number(layout.productColumns) === 0 ? ' selected' : ''}>Tự động</option><option value="2"${Number(layout.productColumns) === 2 ? ' selected' : ''}>2 cột</option><option value="3"${Number(layout.productColumns) === 3 ? ' selected' : ''}>3 cột</option><option value="4"${Number(layout.productColumns) === 4 ? ' selected' : ''}>4 cột</option></select></label>
+          <label>Cỡ logo <output data-output="logoSize">${layout.logoSize}px</output><input class="layout-range" type="range" name="logoSize" min="18" max="48" step="1" value="${layout.logoSize}"></label>
           <label>Vị trí nút “Xem chi tiết”<select name="productButtonAlign">${alignOptions(layout.productButtonAlign)}</select></label>
           <label>Vị trí nút đặt hàng<select name="checkoutButtonAlign">${alignOptions(layout.checkoutButtonAlign, true)}</select></label>
         </div>
@@ -940,18 +1332,20 @@ function layoutPanel(panel) {
     </section>`);
   document.querySelectorAll('.layout-range').forEach(input => {
     input.oninput = () => {
-      document.querySelector(`[data-output="${input.name}"]`).textContent = `${input.value}px`;
+      document.querySelector(`[data-output="${input.name}"]`).textContent = input.dataset.outputFormat === 'ratio'
+        ? formatLayoutBannerRatio(input.value)
+        : (Number(input.value) === 0 && input.dataset.autoLabel ? input.dataset.autoLabel : `${input.value}px`);
     };
   });
   $('#layoutForm').onsubmit = async event => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget));
-    ['heroTitleSize', 'heroIntroSize', 'productTitleSize'].forEach(key => {
+    ['heroTitleSize', 'heroIntroSize', 'bannerAspectRatio', 'productTitleSize', 'headerHeight', 'heroHeight', 'sectionSpacing', 'productImageHeight', 'productColumns', 'logoSize'].forEach(key => {
       values[key] = Number(values[key]);
     });
     try {
-      await saveShared('aeon-layout', values);
-      toastAdmin('Đã lưu bố cục và cỡ chữ.');
+      await saveShared('aeon-layout', {...layout, ...values});
+      toastAdmin('Đã lưu màu sắc, bố cục và kích thước giao diện.');
     } catch (error) {
       toastAdmin(error.message);
     }
@@ -967,14 +1361,77 @@ function layoutPanel(panel) {
   };
 }
 
+async function downloadCustomerExcel(button) {
+  try {
+    setBusy(button, true, 'Đang tạo Excel...', 'Xuất Excel');
+    const response = await fetch('/api/export/customers.xlsx', {cache: 'no-store'});
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      throw new Error(result.error || 'Không thể tạo tệp Excel.');
+    }
+    const file = await response.blob();
+    if (!file.size) throw new Error('Tệp Excel chưa có dữ liệu hợp lệ.');
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'danh-sach-khach-hang.xlsx';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toastAdmin('Đã tải tệp Excel gồm khách hàng và đơn hàng.');
+  } catch (error) {
+    toastAdmin(error.message);
+  } finally {
+    setBusy(button, false, 'Đang tạo Excel...', 'Xuất Excel');
+  }
+}
+
 function customersPanel(panel) {
   const customers = aeonStore.customers();
   const orders = aeonStore.orders();
-  panel.innerHTML = `<section class="admin-card"><h2>Thông tin khách hàng</h2>${customers.length ? `<div class="customer-list">${customers.map(customer => {
-    const customerOrders = orders.filter(order => order.customerId === customer.id);
+  const syncedOrders = orders.filter(order => order.googleSheetSync?.status === 'synced').length;
+  const failedOrders = orders.filter(order => order.googleSheetSync?.status === 'failed').length;
+  const pendingOrders = orders.filter(order => order.googleSheetSync?.status === 'pending').length;
+  panel.innerHTML = `<section class="admin-card customer-data-card"><h2>Thông tin khách hàng</h2>${customers.length ? `<div class="customer-list">${customers.map(customer => {
+    const customerOrders = orders.filter(order => String(order.customerId) === String(customer.id));
     const total = customerOrders.reduce((sum, order) => sum + order.total, 0);
-    return `<article><div><h3>${escapeHtml(customer.name)}</h3><p>${escapeHtml(customer.phone)} · ${escapeHtml(customer.email)}</p><p>${escapeHtml(customer.address)}</p>${customer.message ? `<blockquote>“${escapeHtml(customer.message)}”</blockquote>` : ''}</div><div><b>${customerOrders.length} đơn</b><strong>${money(total)}</strong><small>${customer.createdAt}</small></div></article>`;
+    const orderMarkup = customerOrders.length ? customerOrders.map(order => {
+      const itemCount = (Array.isArray(order.items) ? order.items : []).reduce((sum, item) => sum + Math.max(1, Number(item.qty ?? item.quantity) || 1), 0);
+      const productNames = (Array.isArray(order.items) ? order.items : []).slice(0, 2).map(item => escapeHtml(item.name || 'Sản phẩm')).join(' · ');
+      const moreProducts = Math.max(0, (Array.isArray(order.items) ? order.items.length : 0) - 2);
+      const syncStatus = order.googleSheetSync?.status || 'pending';
+      const syncLabel = syncStatus === 'synced' ? 'Đã đồng bộ' : syncStatus === 'failed' ? 'Lỗi đồng bộ' : 'Đang chờ';
+      return `<div class="customer-order-card">
+        <div class="customer-order-main">
+          <div class="customer-order-code"><span>MÃ ĐƠN HÀNG</span><b>${escapeHtml(order.code)}</b><small>${escapeHtml(order.createdAt || '')}</small></div>
+          <div class="customer-order-products"><span>${itemCount} sản phẩm</span><p>${productNames || 'Chưa có thông tin sản phẩm'}${moreProducts ? ` · +${moreProducts} sản phẩm khác` : ''}</p></div>
+          <div class="customer-order-total"><span>TỔNG THANH TOÁN</span><strong>${money(order.total)}</strong><small class="order-sync-status ${escapeHtml(syncStatus)}">${syncLabel}</small></div>
+        </div>
+        <a class="order-pdf-button" href="/api/orders/${encodeURIComponent(order.code)}.pdf" download="don-hang-${escapeHtml(order.code)}.pdf" title="Tải PDF đơn hàng ${escapeHtml(order.code)}"><span>PDF</span>Tải đơn hàng <b>↓</b></a>
+      </div>`;
+    }).join('') : '<p class="customer-no-order">Khách hàng này chưa có đơn hàng.</p>';
+    return `<article class="customer-record">
+      <header class="customer-record-header">
+        <div><span class="customer-label">KHÁCH HÀNG</span><h3>${escapeHtml(customer.name)}</h3><p>${escapeHtml(customer.phone)}${customer.email ? ` · ${escapeHtml(customer.email)}` : ''}</p><p>${escapeHtml(customer.address)}</p>${customer.message ? `<blockquote>“${escapeHtml(customer.message)}”</blockquote>` : ''}</div>
+        <div class="customer-record-total"><b>${customerOrders.length} đơn hàng</b><strong>${money(total)}</strong><small>Ghi nhận ${escapeHtml(customer.createdAt || '')}</small></div>
+      </header>
+      <div class="customer-order-list">${orderMarkup}</div>
+    </article>`;
   }).join('')}</div>` : '<p class="empty-admin">Chưa có thông tin khách hàng. Thông tin sẽ được lưu sau khi khách gửi form đặt hàng.</p>'}</section>`;
+  const card = panel.querySelector('.admin-card');
+  const heading = card.querySelector('h2');
+  const action = document.createElement('div');
+  action.className = 'panel-action';
+  action.innerHTML = '<div><h2>Thông tin khách hàng</h2><p>Xuất Excel tổng hợp hoặc tải PDF đẹp riêng cho từng đơn hàng bên dưới.</p></div><button class="secondary-button" id="downloadCustomerExcel" type="button">Xuất Excel</button>';
+  heading.replaceWith(action);
+  action.querySelector('#downloadCustomerExcel').onclick = () => downloadCustomerExcel(action.querySelector('#downloadCustomerExcel'));
+  panel.insertAdjacentHTML('afterbegin', `
+    <section class="admin-card sheet-sync-card">
+      <div class="panel-action"><div><p class="eyebrow">GOOGLE SHEET</p><h2>Đồng bộ đơn đặt hàng</h2><p>Đơn vẫn được lưu nội bộ trước, sau đó mới gửi bản sao sang Apps Script.</p></div><a class="secondary-button" href="/google-apps-script-order-sync.gs" download>Tải mã Apps Script</a></div>
+      <div class="sheet-sync-stats"><span><b>${syncedOrders}</b> Đã đồng bộ</span><span><b>${pendingOrders}</b> Đang chờ</span><span class="${failedOrders ? 'has-error' : ''}"><b>${failedOrders}</b> Lỗi đồng bộ</span></div>
+      <p class="sheet-sync-help">Endpoint: <a href="https://script.google.com/macros/s/AKfycbwCUvYd6yrCQtWFvTa1iiU5fYVlePltZbSbKErdWnx53NFKpvuyZ-nnZGPB5FzmxeM3xg/exec" target="_blank" rel="noopener noreferrer">Mở Apps Script ↗</a>. Deployment phải có hàm <code>doPost</code>, chạy dưới tài khoản của bạn và cho phép truy cập <b>Anyone</b>.</p>
+    </section>`);
 }
 
 function toastAdmin(message) {
@@ -986,9 +1443,11 @@ function toastAdmin(message) {
 }
 
 window.addEventListener('aeon-store-sync', () => {
+  renderAeonBrandLogos(aeonStore.ui());
   if (isAuthed()) render();
 });
 
+renderAeonBrandLogos(aeonStore.ui());
 if (isAuthed()) {
   aeonStore.setAdminSession(true);
   showApp();

@@ -1,7 +1,19 @@
 {
+  "name": "aeon-mooncake-2026",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Website danh mục và đặt bánh Trung Thu AEON 2026.",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check app.js && node --check admin.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@tesseract.js-data/vie": "^1.0.0",
     "pdf-parse": "^2.4.5",
+    "pdfkit": "^0.19.1",
     "tesseract.js": "^7.0.0",
     "xlsx": "^0.18.5"
   }

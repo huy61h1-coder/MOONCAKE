@@ -1,0 +1,109 @@
+.quote-download {
+  order: 2;
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+}
+
+.quote-download-trigger[disabled] {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+.quote-download-menu[hidden] {
+  display: none;
+}
+
+.quote-download-menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 7px);
+  left: 0;
+  display: grid;
+  width: 240px;
+  padding: 6px;
+  border: 1px solid rgba(222, 214, 201, .9);
+  background: #fff;
+  box-shadow: 0 13px 28px rgba(65, 45, 35, .16);
+}
+
+.quote-download-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 11px;
+  color: var(--ink);
+  text-decoration: none;
+  transition: background .18s, color .18s;
+}
+
+.quote-download-option + .quote-download-option {
+  border-top: 1px solid var(--line);
+}
+
+.quote-download-option:hover,
+.quote-download-option:focus-visible {
+  outline: none;
+  background: var(--paper);
+  color: var(--red);
+}
+
+.quote-download-option.is-disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.quote-download-option.is-disabled:hover {
+  background: transparent;
+  color: var(--ink);
+}
+
+.quote-download-option b {
+  font-size: 11px;
+}
+
+.quote-download-option span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+@media (min-width: 761px) {
+  .hero {
+    position: relative;
+    z-index: 6;
+    overflow: visible;
+  }
+
+  .hero-copy {
+    position: relative;
+    z-index: 7;
+  }
+
+  .hero-art {
+    z-index: 1;
+  }
+
+  .quote-download {
+    z-index: 50;
+  }
+
+  .collection {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+@media (max-width: 760px) {
+  .quote-download {
+    width: 100%;
+  }
+
+  .quote-download-menu {
+    position: static;
+    width: min(100%, 300px);
+    margin-top: 7px;
+    box-shadow: 0 8px 20px rgba(65, 45, 35, .12);
+  }
+}

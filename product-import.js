@@ -355,6 +355,11 @@ function cellText(value) {
   return cleanText(value, 500);
 }
 
+function isInstructionSheet(sheetName) {
+  const key = normaliseKey(sheetName);
+  return /^(?:huong dan|huong dan su dung|read me|instructions?|ghi chu|notes?)$/.test(key);
+}
+
 function candidatesFromSpreadsheet(buffer, filename = '') {
   const isCsv = /\.csv$/i.test(filename);
   const source = isCsv ? buffer.toString('utf8').replace(/^\uFEFF/, '') : buffer;
@@ -364,6 +369,7 @@ function candidatesFromSpreadsheet(buffer, filename = '') {
 
   workbook.SheetNames.slice(0, 10).forEach(sheetName => {
     if (candidates.length >= MAX_CANDIDATES) return;
+    if (isInstructionSheet(sheetName)) return;
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(sheet, {header: 1, defval: '', raw: false, blankrows: false});
     const header = findHeaderRow(rows);

@@ -1,0 +1,191 @@
+/* Shared logo treatment for storefront and administration. */
+.brand {
+  min-width: 0;
+  max-width: 180px;
+}
+
+.brand-text,
+.brand-subtitle {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-subtitle {
+  white-space: pre-line;
+}
+
+.brand-logo-image {
+  display: block;
+  width: auto;
+  max-width: 140px;
+  height: 42px;
+  max-height: 42px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.brand.has-brand-image {
+  flex: 0 1 auto;
+  letter-spacing: 0;
+}
+
+.brand.has-brand-image .brand-subtitle {
+  width: 0;
+  min-width: 100%;
+  max-width: none;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  text-align: center;
+  text-overflow: clip;
+  white-space: pre-line;
+}
+
+.brand.has-brand-image.has-brand-subtitle {
+  width: min-content;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.brand.has-brand-image.has-brand-subtitle .brand-logo-image {
+  align-self: start;
+}
+
+.brand.has-brand-image.has-brand-subtitle .brand-subtitle {
+  flex: 0 0 auto;
+  margin-top: 0;
+  line-height: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.site-header {
+  gap: 12px;
+}
+
+.site-header .brand.has-brand-image {
+  max-width: min(140px, 30vw);
+}
+
+.site-header .brand.has-brand-image .brand-logo-image {
+  max-width: min(140px, 30vw);
+  max-height: 38px;
+}
+
+.site-header .brand.has-brand-image.has-brand-subtitle {
+  max-height: max(6px, calc(var(--admin-header-height, 82px) - 4px));
+  justify-content: center;
+  gap: 2px;
+}
+
+.site-header .brand.has-brand-image.has-brand-subtitle .brand-logo-image {
+  height: clamp(1px, calc(var(--admin-header-height, 82px) - 20px), 28px);
+  max-height: clamp(1px, calc(var(--admin-header-height, 82px) - 20px), 28px);
+}
+
+.site-header .brand.has-brand-image.has-brand-subtitle .brand-subtitle {
+  font-size: clamp(3px, calc(var(--admin-header-height, 82px) * .12), 7px);
+}
+
+footer .brand.has-brand-image {
+  max-width: 124px;
+}
+
+footer .brand.has-brand-image .brand-logo-image {
+  max-width: 124px;
+  max-height: 35px;
+}
+
+.admin-sidebar .brand.has-brand-image {
+  max-width: 142px;
+}
+
+.admin-sidebar .brand.has-brand-image .brand-logo-image {
+  max-width: 142px;
+  max-height: 40px;
+}
+
+.admin-login .brand.has-brand-image {
+  max-width: 160px;
+}
+
+.admin-login .brand.has-brand-image .brand-logo-image {
+  max-width: 160px;
+  max-height: 46px;
+}
+
+.asset-preview.logo-preview {
+  min-height: 92px;
+  padding: 16px;
+  background: #fbf8f1;
+}
+
+.asset-preview.logo-preview img {
+  width: auto;
+  height: 58px;
+  max-width: min(100%, 260px);
+  object-fit: contain;
+  object-position: left center;
+}
+
+@media (max-width: 760px) {
+  .site-header .brand.has-brand-image {
+    max-width: 110px;
+  }
+
+  .site-header .brand.has-brand-image .brand-logo-image {
+    max-width: 110px;
+    max-height: 30px;
+  }
+
+  .site-header .brand.has-brand-image .brand-subtitle {
+    max-width: 110px;
+    margin-top: 3px;
+    font-size: 6px;
+  }
+
+  .site-header .brand.has-brand-image.has-brand-subtitle {
+    max-height: max(6px, calc(var(--admin-header-height, 82px) * .75 - 3px));
+    gap: 1px;
+  }
+
+  .site-header .brand.has-brand-image.has-brand-subtitle .brand-logo-image {
+    height: clamp(1px, calc(var(--admin-header-height, 82px) * .75 - 18px), 18px);
+    max-height: clamp(1px, calc(var(--admin-header-height, 82px) * .75 - 18px), 18px);
+  }
+
+  .site-header .brand.has-brand-image.has-brand-subtitle .brand-subtitle {
+    margin-top: 0;
+    font-size: clamp(3px, calc(var(--admin-header-height, 82px) * .1), 6px);
+  }
+
+  .admin-sidebar .brand.has-brand-image {
+    max-width: 128px;
+  }
+
+  .admin-sidebar .brand.has-brand-image .brand-logo-image {
+    max-width: 128px;
+    max-height: 36px;
+  }
+
+  footer .brand.has-brand-image {
+    max-width: 112px;
+  }
+
+  footer .brand.has-brand-image .brand-logo-image {
+    max-width: 112px;
+    max-height: 32px;
+  }
+}
+
+@media (max-width: 420px) {
+  .site-header .brand.has-brand-image,
+  .site-header .brand.has-brand-image .brand-logo-image {
+    max-width: 94px;
+  }
+
+  .site-header .brand.has-brand-image .brand-logo-image {
+    max-height: 28px;
+  }
+}
