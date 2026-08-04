@@ -31,6 +31,18 @@ function validAdminProductVariants(value) {
   return Array.isArray(value) ? value.filter(variant => String(variant?.name || '').trim()) : [];
 }
 
+function productInsertPositionOptions(items, selectedPosition = items.length) {
+  if (!items.length) return '<option value="0" selected>1 — Vị trí đầu tiên</option>';
+  return Array.from({length: items.length + 1}, (_, index) => {
+    const label = index === 0
+      ? '1 — Đầu danh sách'
+      : index === items.length
+        ? `${index + 1} — Cuối danh sách`
+        : `${index + 1} — Sau “${items[index - 1].name || 'Sản phẩm chưa đặt tên'}”`;
+    return `<option value="${index}"${index === selectedPosition ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
+}
+
 function productVariantRowMarkup(variant = {}) {
   const id = String(variant.id || newProductVariantId());
   return `<div class="product-variant-row" data-variant-id="${escapeHtml(id)}">
@@ -433,7 +445,7 @@ function render() {
   return customersPanel(panel);
 }
 
-function quickProductRow(product, isNew = false) {
+function quickProductRow(product, isNew = false, positionProducts = []) {
   const id = product.id || `draft-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const variants = validAdminProductVariants(product.variants);
   const variantPrices = variants.map(variant => Number(variant.price)).filter(price => Number.isFinite(price) && price >= 0);
@@ -445,6 +457,7 @@ function quickProductRow(product, isNew = false) {
       <label>Thương hiệu<select data-quick-brand>${aeonBrandOptions(product.brand)}</select></label>
       <label>${variants.length ? 'Giá từ (VNĐ)' : 'Giá bán (VNĐ)'}<input data-quick-price type="number" min="0" inputmode="numeric" value="${price}" required${variants.length ? ' readonly' : ''}></label>
       <label>Nhãn hiển thị<input data-quick-label value="${escapeHtml(product.label || '')}" placeholder="Ví dụ: Bán chạy"></label>
+      ${isNew ? `<label>Vị trí trong danh sách<select data-quick-position>${productInsertPositionOptions(positionProducts)}</select></label>` : ''}
       <label class="wide">Mô tả ngắn<textarea data-quick-description rows="2" required placeholder="Mô tả hiển thị trên thẻ sản phẩm">${escapeHtml(product.description || '')}</textarea></label>
     </div>
   </article>`;
@@ -458,7 +471,8 @@ function quickProductValues(list) {
     brand: row.querySelector('[data-quick-brand]').value,
     price: row.querySelector('[data-quick-price]').value,
     label: row.querySelector('[data-quick-label]').value,
-    description: row.querySelector('[data-quick-description]').value
+    description: row.querySelector('[data-quick-description]').value,
+    insertPosition: row.querySelector('[data-quick-position]')?.value ?? ''
   }));
 }
 
@@ -495,7 +509,11 @@ async function saveQuickProducts(rows) {
     };
     if (position >= 0) products[position] = product;
     else {
-      products.push(product);
+      const requestedPosition = Number(row.insertPosition);
+      const insertAt = Number.isInteger(requestedPosition)
+        ? Math.max(0, Math.min(requestedPosition, products.length))
+        : products.length;
+      products.splice(insertAt, 0, product);
       added += 1;
     }
     savedIds.push(id);
@@ -560,7 +578,7 @@ function dashboard(panel) {
   $('#quickAddProduct').onclick = () => {
     const empty = $('#quickProductsEmpty');
     if (empty) empty.remove();
-    list.insertAdjacentHTML('beforeend', quickProductRow({name: '', price: '', label: '', description: ''}, true));
+    list.insertAdjacentHTML('beforeend', quickProductRow({name: '', price: '', label: '', description: ''}, true, aeonStore.products()));
     const row = list.lastElementChild;
     bindQuickRow(row);
     row.querySelector('[data-quick-name]').focus();
@@ -974,7 +992,8 @@ function openProductEditor(id, options = {}) {
   const onSaved = options.onSaved || (() => productPanel($('#adminPanel')));
   const onDeleted = options.onDeleted || onSaved;
   const onCancel = options.onCancel || (() => editorMount.replaceChildren());
-  const existing = aeonStore.products().find(product => product.id === id) || {
+  const currentProducts = aeonStore.products();
+  const existing = currentProducts.find(product => product.id === id) || {
     id: `sp-${Date.now()}`,
     name: '',
     description: '',
@@ -996,6 +1015,8 @@ function openProductEditor(id, options = {}) {
   let getProductVariants = () => [];
   const saveProduct = async form => {
     const data = Object.fromEntries(new FormData(form));
+    const requestedPosition = Number(data.insertPosition);
+    delete data.insertPosition;
     data.id = existing.id;
     data.details = AEONRichText.clean(data.details, 3000);
     data.variants = getProductVariants();
@@ -1015,7 +1036,12 @@ function openProductEditor(id, options = {}) {
     const stored = position < 0 ? null : all[position];
     // A stale admin tab must not erase an image uploaded in another tab.
     if (!data.image && stored?.image) data.image = normaliseImageUrl(stored.image);
-    if (position < 0) all.push(data);
+    if (position < 0) {
+      const insertAt = Number.isInteger(requestedPosition)
+        ? Math.max(0, Math.min(requestedPosition, all.length))
+        : all.length;
+      all.splice(insertAt, 0, data);
+    }
     else all[position] = {...stored, ...data};
     await saveShared('aeon-products', all);
     await verifyProductImage(data.id, data.image);
@@ -1030,6 +1056,7 @@ function openProductEditor(id, options = {}) {
         <div class="admin-form-grid">
           <label>Tên sản phẩm<input name="name" required value="${escapeHtml(existing.name)}"></label>
           <label>Thương hiệu<select name="brand">${aeonBrandOptions(existing.brand)}</select></label>
+          ${id ? '' : `<label>Vị trí trong danh sách<select name="insertPosition">${productInsertPositionOptions(currentProducts)}</select><small>Sản phẩm sẽ được chèn đúng vị trí này khi lưu.</small></label>`}
           <label>Giá bán (VNĐ)<small data-variant-price-hint></small><input name="price" type="number" min="0" inputmode="numeric" required value="${existing.price ?? ''}" placeholder="Ví dụ: 750000"${editorVariants.length ? ' readonly' : ''}></label>
           <label>Mô tả ngắn<textarea name="description" required rows="2" placeholder="Tóm tắt hiển thị trên thẻ sản phẩm">${escapeHtml(existing.description)}</textarea></label>
           <label>Nhãn hiển thị<input name="label" value="${escapeHtml(existing.label)}"></label>

@@ -65,6 +65,18 @@ function normaliseProduct(product) {
   };
 }
 
+function storefrontProductInsertPositionOptions(items, selectedPosition = items.length) {
+  if (!items.length) return '<option value="0" selected>1 — Vị trí đầu tiên</option>';
+  return Array.from({length: items.length + 1}, (_, index) => {
+    const label = index === 0
+      ? '1 — Đầu danh sách'
+      : index === items.length
+        ? `${index + 1} — Cuối danh sách`
+        : `${index + 1} — Sau “${items[index - 1].name || 'Sản phẩm chưa đặt tên'}”`;
+    return `<option value="${index}"${index === selectedPosition ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
+}
+
 function priceLabel(product) {
   if (product.variants?.length) {
     const available = product.variants.map(variant => variant.price).filter(price => price > 0);
@@ -512,9 +524,15 @@ async function saveStorefrontProduct(form, existing, getVariants) {
   if (existing.id && position < 0) throw new Error('Sản phẩm đã thay đổi ở phiên khác. Hãy tải lại trang trước khi lưu.');
   const stored = position >= 0 ? all[position] : {};
   const product = productFromStorefrontForm(form, stored, getVariants());
+  const requestedPosition = Number(form.elements.insertPosition?.value);
   product.id = stored.id || existing.id || `sp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   if (position >= 0) all[position] = product;
-  else all.push(product);
+  else {
+    const insertAt = Number.isInteger(requestedPosition)
+      ? Math.max(0, Math.min(requestedPosition, all.length))
+      : all.length;
+    all.splice(insertAt, 0, product);
+  }
 
   const saved = await aeonStore.set('aeon-products', all);
   if (!saved) {
@@ -562,6 +580,7 @@ function openStorefrontProductEditor(id) {
       <div class="storefront-admin-form-grid">
         <label>Tên sản phẩm<input name="name" required value="${escapeHtml(existing.name)}"></label>
         <label>Thương hiệu<select name="brand">${aeonBrandOptions(existing.brand)}</select></label>
+        ${existing.id ? '' : `<label>Vị trí trong danh sách<select name="insertPosition">${storefrontProductInsertPositionOptions(aeonStore.products())}</select><small>Sản phẩm sẽ được chèn đúng vị trí này khi lưu.</small></label>`}
         <label>Giá bán (VNĐ)<small data-variant-price-hint></small><input name="price" type="number" min="0" inputmode="numeric" required value="${existing.price ?? ''}" placeholder="Ví dụ: 750000"${existing.variants?.length ? ' readonly' : ''}></label>
         <label>Nhãn hiển thị<input name="label" value="${escapeHtml(existing.label || '')}" placeholder="Ví dụ: Bán chạy"></label>
         <label>Quy cách / khối lượng<input name="weight" value="${escapeHtml(existing.weight || '')}" placeholder="Ví dụ: 4 bánh · 720g"></label>
