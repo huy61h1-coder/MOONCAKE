@@ -6,8 +6,8 @@ document.head.append(Object.assign(document.createElement('link'), {rel: 'styles
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-sheet-sync.css'}));
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-order-pdf.css'}));
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'product-variants.css'}));
+document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-brands.css'}));
 
-const credential = {username: 'admin', password: '07931548'};
 const $ = selector => document.querySelector(selector);
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -372,21 +372,35 @@ function showApp() {
   render();
 }
 
-$('#loginForm').addEventListener('submit', event => {
+$('#loginForm').addEventListener('submit', async event => {
   event.preventDefault();
+  const submit = event.currentTarget.querySelector('button[type="submit"]');
+  const error = $('#loginError');
   const form = new FormData(event.currentTarget);
   const username = String(form.get('username')).trim();
-  const password = String(form.get('password')).trim();
-
-  if (username === credential.username && password === credential.password) {
+  const password = String(form.get('password'));
+  error.textContent = '';
+  setBusy(submit, true, 'Đang đăng nhập...', 'Đăng nhập →');
+  try {
+    const response = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password})
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Không thể đăng nhập.');
     aeonStore.setAdminSession(true);
     showApp();
-    return;
+  } catch (loginError) {
+    aeonStore.setAdminSession(false);
+    error.textContent = loginError.message || 'Tài khoản hoặc mật khẩu chưa đúng.';
+  } finally {
+    setBusy(submit, false, 'Đang đăng nhập...', 'Đăng nhập →');
   }
-  $('#loginError').textContent = 'Tài khoản hoặc mật khẩu chưa đúng.';
 });
 
-$('#logout').onclick = () => {
+$('#logout').onclick = async () => {
+  await fetch('/api/admin/logout', {method:'POST'}).catch(() => null);
   aeonStore.setAdminSession(false);
   location.reload();
 };
@@ -412,6 +426,7 @@ function render() {
   if (tab === 'products') return productPanel(panel);
   if (tab === 'interface') {
     interfacePanel(panel);
+    brandSettingsPanel(panel);
     assetPanel(panel);
     return layoutPanel(panel);
   }
@@ -626,6 +641,11 @@ function productIdentity(value) {
 }
 
 function importedExistingProduct(candidate, products) {
+  const systemId = cleanTextImport(candidate.id, 100);
+  if (systemId) {
+    const byId = products.find(product => cleanTextImport(product.id, 100) === systemId);
+    if (byId) return byId;
+  }
   const sku = productIdentity(candidate.sku);
   return sku ? products.find(product => productIdentity(product.sku) === sku) : null;
 }
@@ -640,19 +660,29 @@ async function saveImportedProducts(drafts) {
   drafts.forEach((draft, index) => {
     const name = cleanTextImport(draft.name, 160);
     const description = importedDescription(draft.description);
-    const price = Number(draft.price);
-    if (!name || !Number.isFinite(price) || price <= 0) throw new Error('Mỗi sản phẩm cần có tên và giá bán lớn hơn 0.');
-
+    const requestedId = cleanTextImport(draft.id, 100);
     const sku = cleanTextImport(draft.sku, 100);
-    const position = sku ? products.findIndex(product => productIdentity(product.sku) === productIdentity(sku)) : -1;
+    let position = requestedId ? products.findIndex(product => cleanTextImport(product.id, 100) === requestedId) : -1;
+    if (position < 0 && sku) position = products.findIndex(product => productIdentity(product.sku) === productIdentity(sku));
     const existing = position >= 0 ? products[position] : null;
     const existingVariants = validAdminProductVariants(existing?.variants);
-    const variantPrices = existingVariants.map(variant => Number(variant.price)).filter(value => Number.isFinite(value) && value >= 0);
+    const importedVariants = validAdminProductVariants(draft.variants).map((variant, variantIndex) => ({
+      id: cleanTextImport(variant.id, 100) || `variant-${Date.now()}-${index}-${variantIndex}`,
+      name: cleanTextImport(variant.name, 120),
+      price: Math.round(Number(variant.price)),
+      sku: cleanTextImport(variant.sku, 100)
+    }));
+    const variants = draft.hasVariantColumns ? importedVariants : existingVariants;
+    const variantPrices = variants.map(variant => Number(variant.price)).filter(value => Number.isFinite(value) && value >= 0);
+    const price = variantPrices.length ? Math.min(...variantPrices) : Number(draft.price);
+    if (!name || !Number.isFinite(price) || price <= 0) {
+      throw new Error('Mỗi sản phẩm cần có tên và giá bán, hoặc ít nhất một phân loại có giá lớn hơn 0.');
+    }
     const product = {
       ...existing,
-      id: existing?.id || `sp-import-${Date.now()}-${index}`,
+      id: existing?.id || requestedId || `sp-import-${Date.now()}-${index}`,
       name,
-      price: variantPrices.length ? Math.min(...variantPrices) : Math.round(price),
+      price: Math.round(price),
       brand: normaliseAeonBrand(draft.brand) || normaliseAeonBrand(existing?.brand),
       description,
       sku,
@@ -661,6 +691,10 @@ async function saveImportedProducts(drafts) {
       ingredients: cleanTextImport(draft.ingredients, 300),
       details: AEONRichText.clean(draft.details || description, 3000),
       image: normaliseImageUrl(draft.image || existing?.image || ''),
+      variantLabel: variants.length
+        ? cleanTextImport(draft.hasVariantColumns ? draft.variantLabel : existing?.variantLabel, 100) || 'Phân loại'
+        : '',
+      variants,
       bg: existing?.bg || '#e9c38b',
       box: existing?.box || '#8f1834'
     };
@@ -685,9 +719,54 @@ async function saveImportedProducts(drafts) {
 
 function importWarnings(candidate, existing) {
   const warnings = [...(candidate.warnings || [])];
-  if (!Number(candidate.price) || Number(candidate.price) <= 0) warnings.push('Chưa có giá bán hợp lệ.');
-  if (existing) warnings.push('Trùng mã sản phẩm: nếu chọn nhập, mục hiện có sẽ được cập nhật.');
+  const variantPrices = validAdminProductVariants(candidate.variants)
+    .map(variant => Number(variant.price))
+    .filter(price => Number.isFinite(price) && price > 0);
+  if ((!Number(candidate.price) || Number(candidate.price) <= 0) && !variantPrices.length) warnings.push('Chưa có giá bán hoặc giá phân loại hợp lệ.');
+  if (existing) warnings.push('Trùng ID hoặc mã sản phẩm: nếu chọn nhập, mục hiện có sẽ được cập nhật.');
   return warnings;
+}
+
+function bindImportVariantEditor(card) {
+  const list = card.querySelector('[data-import-variant-rows]');
+  const addButton = card.querySelector('[data-import-add-variant]');
+  const priceInput = card.querySelector('[data-import-price]');
+  const originalPrice = priceInput.value;
+
+  const syncPrice = () => {
+    const rows = [...list.querySelectorAll('[data-variant-id]')];
+    const prices = rows.map(row => Number(row.querySelector('[data-variant-price]').value));
+    priceInput.readOnly = rows.length > 0;
+    priceInput.classList.toggle('derived-price', rows.length > 0);
+    if (!rows.length) {
+      if (!priceInput.value) priceInput.value = originalPrice;
+      return;
+    }
+    const validPrices = prices.filter(price => Number.isFinite(price) && price >= 0);
+    priceInput.value = validPrices.length === prices.length ? Math.min(...validPrices) : '';
+  };
+
+  const bindRow = row => {
+    row.querySelector('[data-remove-variant]').onclick = () => {
+      row.remove();
+      syncPrice();
+    };
+    row.querySelectorAll('input').forEach(input => input.addEventListener('input', syncPrice));
+  };
+  list.querySelectorAll('[data-variant-id]').forEach(bindRow);
+  addButton.onclick = () => {
+    if (list.querySelectorAll('[data-variant-id]').length >= 20) {
+      toastAdmin('Mỗi sản phẩm tối đa 20 phân loại.');
+      return;
+    }
+    list.insertAdjacentHTML('beforeend', productVariantRowMarkup());
+    const row = list.lastElementChild;
+    bindRow(row);
+    syncPrice();
+    row.querySelector('[data-variant-name]').focus();
+  };
+  syncPrice();
+  return () => productVariantsFromEditor(list);
 }
 
 function renderImportPreview(target, analysis, products) {
@@ -710,7 +789,8 @@ function renderImportPreview(target, analysis, products) {
       const existing = importedExistingProduct(candidate, products);
       const warnings = importWarnings(candidate, existing);
       const canSelect = Boolean(cleanTextImport(candidate.name));
-      const selectByDefault = canSelect && Number(candidate.price) > 0 && !existing;
+      const hasValidVariant = validAdminProductVariants(candidate.variants).some(variant => Number(variant.price) > 0);
+      const selectByDefault = canSelect && (Number(candidate.price) > 0 || hasValidVariant) && !existing;
       return `<article class="import-candidate" data-import-index="${index}" data-existing-id="${escapeHtml(existing?.id || '')}">
         <header><label class="import-check"><input type="checkbox" data-import-select ${selectByDefault ? 'checked' : ''} ${canSelect ? '' : 'disabled'}><span>Chọn sản phẩm ${index + 1}</span></label><span class="import-confidence">Độ tin cậy ${Math.max(0, Math.min(100, Number(candidate.confidence) || 0))}%</span></header>
         <div class="import-fields">
@@ -720,6 +800,8 @@ function renderImportPreview(target, analysis, products) {
           <label>Mã sản phẩm<input data-import-sku value="${escapeHtml(candidate.sku || '')}"></label>
           <label class="wide">Mô tả ngắn<textarea data-import-description rows="2">${escapeHtml(candidate.description || '')}</textarea></label>
           <label>Thành phần nổi bật<input data-import-ingredients value="${escapeHtml(candidate.ingredients || '')}" placeholder="Ví dụ: Hạt sen · trứng muối"></label>
+          <label>Tên nhóm phân loại<input data-import-variant-label value="${escapeHtml(candidate.variantLabel || existing?.variantLabel || '')}" placeholder="Ví dụ: Màu sắc"></label>
+          <fieldset class="product-variant-editor import-variant-editor wide"><legend>Giá trị phân loại</legend><p>Mỗi màu sắc, kích thước hoặc hương vị là một dòng riêng.</p><div class="product-variant-rows" data-import-variant-rows>${validAdminProductVariants(candidate.variants).map(productVariantRowMarkup).join('')}</div><button class="secondary-button" type="button" data-import-add-variant>+ Thêm phân loại</button></fieldset>
           <div class="richtext-field wide"><span class="richtext-label">Thông tin chi tiết</span>${AEONRichText.editorMarkup({name: 'details', value: candidate.details || '', rows: 8, placeholder: 'Kiểm tra lại nội dung OCR trước khi lưu'})}</div>
         </div>
         ${warnings.length ? `<div class="import-row-warnings">${warnings.map(warning => `<p>• ${escapeHtml(warning)}</p>`).join('')}</div>` : ''}
@@ -729,6 +811,10 @@ function renderImportPreview(target, analysis, products) {
     ${analysis.textPreview ? `<details class="import-source-text"><summary>Xem nội dung đã trích xuất</summary><pre>${escapeHtml(analysis.textPreview)}</pre></details>` : ''}`;
 
   AEONRichText.bindAll(target);
+  const importVariantGetters = new Map();
+  target.querySelectorAll('.import-candidate').forEach(card => {
+    importVariantGetters.set(card, bindImportVariantEditor(card));
+  });
   const checks = [...target.querySelectorAll('[data-import-select]')];
   const selectableNew = checks.filter(check => !check.disabled && !check.closest('.import-candidate').dataset.existingId);
   const updateSelection = () => {
@@ -753,6 +839,8 @@ function renderImportPreview(target, analysis, products) {
       .map(card => {
         const index = Number(card.dataset.importIndex);
         const original = candidates[index] || {};
+        const variants = importVariantGetters.get(card)?.() || [];
+        const variantLabel = card.querySelector('[data-import-variant-label]').value;
         return {
           ...original,
           name: card.querySelector('[data-import-name]').value,
@@ -761,7 +849,10 @@ function renderImportPreview(target, analysis, products) {
           sku: card.querySelector('[data-import-sku]').value,
           description: card.querySelector('[data-import-description]').value,
           ingredients: card.querySelector('[data-import-ingredients]').value,
-          details: card.querySelector('[data-richtext-input][name="details"]').value
+          details: card.querySelector('[data-richtext-input][name="details"]').value,
+          variantLabel,
+          variants,
+          hasVariantColumns: Boolean(original.hasVariantColumns || variants.length || cleanTextImport(variantLabel))
         };
       });
     if (!selected.length) return;
@@ -782,12 +873,12 @@ function renderImportPreview(target, analysis, products) {
 function productPanel(panel) {
   const products = aeonStore.products();
   panel.innerHTML = `
-    <div class="panel-action"><p>Thêm, sửa hoặc xóa sản phẩm. Thay đổi hiển thị ngay tại cửa hàng.</p><div class="panel-action-buttons"><button class="secondary-button" id="downloadProductTemplate" type="button">Tải mẫu Excel</button><button class="secondary-button" id="importProducts" type="button">Nhập từ tệp</button><button class="button primary" id="newProduct">+ Thêm sản phẩm</button></div></div>
+    <div class="panel-action"><p>Thêm, sửa hoặc xóa sản phẩm. Thay đổi hiển thị ngay tại cửa hàng.</p><div class="panel-action-buttons"><button class="secondary-button" id="downloadCurrentProducts" type="button">Tải danh sách hiện tại</button><button class="secondary-button" id="downloadProductTemplate" type="button">Tải file mẫu</button><button class="secondary-button" id="importProducts" type="button">Tải lên danh sách</button><button class="button primary" id="newProduct">+ Thêm sản phẩm</button></div></div>
     <section class="admin-card import-products" id="productImportPanel" hidden aria-labelledby="productImportTitle">
-      <div class="import-intro"><div><p class="eyebrow">NHẬP DANH MỤC</p><h2 id="productImportTitle">Phân tích sản phẩm từ tệp</h2><p>Hỗ trợ Excel (.xlsx, .xls, .csv), PDF và ảnh. Với Excel, hãy tải mẫu để dùng đúng tên cột; kiểm tra hoặc sửa bản nháp trước khi lưu.</p></div><button class="import-close" type="button" id="closeProductImport" aria-label="Đóng khu vực nhập tệp">×</button></div>
+      <div class="import-intro"><div><p class="eyebrow">NHẬP DANH MỤC</p><h2 id="productImportTitle">Tải lên danh sách sản phẩm</h2><p>Excel có thể chứa nhiều dòng phân loại cho cùng một sản phẩm. Hệ thống sẽ gom theo ID, mã sản phẩm hoặc tên + thương hiệu để bạn kiểm tra trước khi lưu.</p></div><button class="import-close" type="button" id="closeProductImport" aria-label="Đóng khu vực nhập tệp">×</button></div>
       <form class="import-form" id="productImportForm">
         <label class="import-dropzone" for="importProductFile"><span>Chọn tệp danh mục hoặc báo giá</span><small>Excel, PDF, PNG, JPG, WEBP hoặc GIF · tối đa 15 MB</small><input id="importProductFile" type="file" accept=".xlsx,.xls,.csv,.pdf,image/png,image/jpeg,image/webp,image/gif" required></label>
-        <div class="import-actions"><p id="importFileName" aria-live="polite">Chưa chọn tệp.</p><div class="panel-action-buttons"><button class="secondary-button" id="downloadProductTemplateInline" type="button">Tải mẫu Excel</button><button class="button primary" id="analyseProductFile" type="submit">Phân tích tệp</button></div></div>
+        <div class="import-actions"><p id="importFileName" aria-live="polite">Chưa chọn tệp.</p><div class="panel-action-buttons"><button class="secondary-button" id="downloadProductTemplateInline" type="button">Tải file mẫu</button><button class="button primary" id="analyseProductFile" type="submit">Phân tích tệp</button></div></div>
       </form>
       <div class="import-results" id="importResults" aria-live="polite"></div>
     </section>
@@ -796,6 +887,7 @@ function productPanel(panel) {
     </section>
     <div id="productEditor"></div>`;
   $('#newProduct').onclick = () => openProductEditor();
+  $('#downloadCurrentProducts').onclick = () => downloadCurrentProducts($('#downloadCurrentProducts'));
   $('#downloadProductTemplate').onclick = () => downloadProductTemplate($('#downloadProductTemplate'));
   const importPanel = $('#productImportPanel');
   const importResults = $('#importResults');
@@ -829,28 +921,50 @@ function productPanel(panel) {
 }
 
 async function downloadProductTemplate(button) {
+  return downloadProductExcel(button, {
+    url: '/api/template/products.xlsx',
+    filename: 'mau-nhap-danh-sach-san-pham.xlsx',
+    busyText: 'Đang tạo mẫu...',
+    idleText: 'Tải file mẫu',
+    successText: 'Đã tải file mẫu có hướng dẫn phân loại sản phẩm.',
+    errorText: 'Không thể tạo mẫu Excel.'
+  });
+}
+
+async function downloadCurrentProducts(button) {
+  return downloadProductExcel(button, {
+    url: '/api/export/products.xlsx',
+    filename: 'danh-sach-san-pham-hien-tai.xlsx',
+    busyText: 'Đang tạo danh sách...',
+    idleText: 'Tải danh sách hiện tại',
+    successText: 'Đã tải danh sách sản phẩm hiện tại kèm toàn bộ phân loại.',
+    errorText: 'Không thể tạo danh sách sản phẩm Excel.'
+  });
+}
+
+async function downloadProductExcel(button, options) {
   try {
-    setBusy(button, true, 'Đang tạo mẫu...', 'Tải mẫu Excel');
-    const response = await fetch('/api/template/products.xlsx', {cache: 'no-store'});
+    setBusy(button, true, options.busyText, options.idleText);
+    const response = await fetch(options.url, {cache: 'no-store'});
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
-      throw new Error(result.error || 'Không thể tạo mẫu Excel.');
+      throw new Error(result.error || options.errorText);
     }
     const file = await response.blob();
-    if (!file.size) throw new Error('Mẫu Excel chưa có dữ liệu hợp lệ.');
+    if (!file.size) throw new Error('Tệp Excel chưa có dữ liệu hợp lệ.');
     const url = URL.createObjectURL(file);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'mau-nhap-danh-sach-san-pham.xlsx';
+    link.download = options.filename;
     document.body.append(link);
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toastAdmin('Đã tải mẫu Excel nhập danh sách sản phẩm.');
+    toastAdmin(options.successText);
   } catch (error) {
     toastAdmin(error.message);
   } finally {
-    setBusy(button, false, 'Đang tạo mẫu...', 'Tải mẫu Excel');
+    setBusy(button, false, options.busyText, options.idleText);
   }
 }
 
@@ -872,6 +986,7 @@ function openProductEditor(id, options = {}) {
     weight: '',
     ingredients: '',
     sku: '',
+    variantLabel: '',
     variants: [],
     bg: '#e9c38b',
     box: '#8f1834'
@@ -884,6 +999,7 @@ function openProductEditor(id, options = {}) {
     data.id = existing.id;
     data.details = AEONRichText.clean(data.details, 3000);
     data.variants = getProductVariants();
+    data.variantLabel = data.variants.length ? cleanTextImport(data.variantLabel, 100) || 'Phân loại' : '';
     data.price = data.variants.length ? Math.min(...data.variants.map(variant => variant.price)) : Number(data.price);
     if (!Number.isFinite(data.price) || data.price < 0) throw new Error('Giá bán không hợp lệ.');
     data.image = normaliseImageUrl(data.image);
@@ -920,7 +1036,8 @@ function openProductEditor(id, options = {}) {
           <label>Quy cách / khối lượng<input name="weight" value="${escapeHtml(existing.weight || '')}" placeholder="Ví dụ: 4 bánh · 720g"></label>
           <label>Thành phần nổi bật<input name="ingredients" value="${escapeHtml(existing.ingredients || '')}" placeholder="Ví dụ: Hạt sen, trứng muối"></label>
           <label>Mã sản phẩm<input name="sku" value="${escapeHtml(existing.sku || '')}" placeholder="Ví dụ: AM-2026-01"></label>
-          <fieldset class="product-variant-editor image-path"><legend>Lựa chọn sản phẩm</legend><p>Một hình có thể đại diện nhiều loại hàng. Khách sẽ chọn loại trước khi thêm vào giỏ.</p><div class="product-variant-rows" data-variant-rows>${editorVariants.map(productVariantRowMarkup).join('')}</div><button class="secondary-button" type="button" data-add-variant>+ Thêm lựa chọn</button></fieldset>
+          <label class="image-path">Tên nhóm phân loại<input name="variantLabel" value="${escapeHtml(existing.variantLabel || '')}" placeholder="Ví dụ: Màu sắc, Kích thước, Hương vị"><small>Được hiển thị khi sản phẩm có nhiều lựa chọn.</small></label>
+          <fieldset class="product-variant-editor image-path"><legend>Phân loại sản phẩm</legend><p>Mỗi màu sắc, kích thước hoặc hương vị có thể có giá và mã SKU riêng.</p><div class="product-variant-rows" data-variant-rows>${editorVariants.map(productVariantRowMarkup).join('')}</div><button class="secondary-button" type="button" data-add-variant>+ Thêm phân loại</button></fieldset>
           <div class="richtext-field image-path"><span class="richtext-label">Chi tiết sản phẩm</span>${AEONRichText.editorMarkup({name: 'details', value: existing.details || '', rows: 8, placeholder: 'Thông tin hiển thị trong trang chi tiết'})}</div>
           <label class="image-path">Đường dẫn ảnh<input name="image" value="${escapeHtml(existing.image || '')}" placeholder="https://... hoặc /assets/uploads/ten-anh.png"></label>
           <div class="upload-field image-path"><label for="productImageFile">Tải ảnh từ máy (lưu tại /assets/uploads)</label><input id="productImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg"><button class="secondary-button" id="uploadProductImage" type="button">Tải ảnh lên</button></div>
@@ -1042,6 +1159,94 @@ function interfacePanel(panel) {
       await saveShared('aeon-ui', nextUi);
       renderAeonBrandLogos(nextUi);
       toastAdmin('Đã lưu nội dung giao diện và đồng bộ website.');
+    } catch (error) {
+      toastAdmin(error.message);
+    }
+  };
+}
+
+function brandGroupEditorMarkup(group = {}) {
+  const brands = (Array.isArray(group.brands) ? group.brands : []).map(brand => brand?.name || brand).filter(Boolean);
+  return `<article class="brand-settings-group" data-brand-group data-brand-group-id="${escapeHtml(group.id || '')}">
+    <header><label>Tên nhóm thương hiệu<input data-brand-group-name maxlength="100" required value="${escapeHtml(group.name || '')}" placeholder="Ví dụ: Thương hiệu nội địa"></label><button class="danger" type="button" data-remove-brand-group>Xóa nhóm</button></header>
+    <label>Danh sách thương hiệu<textarea data-brand-list rows="6" maxlength="12000" placeholder="Mỗi thương hiệu một dòng">${escapeHtml(brands.join('\n'))}</textarea><small>Nhập mỗi thương hiệu trên một dòng. Thương hiệu đang được sản phẩm sử dụng sẽ không bị mất.</small></label>
+  </article>`;
+}
+
+function brandGroupsFromEditor(form) {
+  const rows = [...form.querySelectorAll('[data-brand-group]')];
+  if (!rows.length) throw new Error('Cần có ít nhất một nhóm thương hiệu.');
+  if (rows.length > 20) throw new Error('Chỉ được tạo tối đa 20 nhóm thương hiệu.');
+  const names = new Set();
+  const groups = rows.map((row, index) => {
+    const name = String(row.querySelector('[data-brand-group-name]').value || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    if (!name) throw new Error('Mỗi nhóm cần có tên.');
+    const brands = String(row.querySelector('[data-brand-list]').value || '')
+      .split(/\r?\n/)
+      .map(value => value.replace(/\s+/g, ' ').trim().slice(0, 120))
+      .filter(Boolean)
+      .map(brandName => {
+        const key = aeonBrandKey(brandName);
+        if (names.has(key)) throw new Error(`Thương hiệu "${brandName}" đang bị trùng.`);
+        names.add(key);
+        return {name: brandName};
+      });
+    return {
+      id: row.dataset.brandGroupId || `brand-group-${Date.now()}-${index + 1}`,
+      name,
+      brands
+    };
+  });
+  if (names.size > 200) throw new Error('Chỉ được lưu tối đa 200 thương hiệu.');
+  return cleanAeonBrandGroups(groups);
+}
+
+function brandSettingsPanel(panel) {
+  const groups = aeonStore.brands();
+  panel.insertAdjacentHTML('beforeend', `
+    <section class="admin-card editor brand-settings">
+      <p class="eyebrow">DANH MỤC THƯƠNG HIỆU</p>
+      <h2>Thêm và quản lý thương hiệu</h2>
+      <p>Các thương hiệu đã lưu sẽ xuất hiện trong bộ lọc trang chủ, trình sửa sản phẩm và file nhập Excel.</p>
+      <form id="brandSettingsForm">
+        <div class="brand-settings-list" data-brand-groups>${groups.map(brandGroupEditorMarkup).join('')}</div>
+        <div class="editor-actions"><button class="secondary-button" type="button" id="addBrandGroup">+ Thêm nhóm</button><button class="button primary" type="submit">Lưu thương hiệu</button></div>
+      </form>
+    </section>`);
+
+  const form = $('#brandSettingsForm');
+  const list = form.querySelector('[data-brand-groups]');
+  const bindGroup = group => {
+    group.querySelector('[data-remove-brand-group]').onclick = () => {
+      if (list.querySelectorAll('[data-brand-group]').length <= 1) {
+        toastAdmin('Cần giữ lại ít nhất một nhóm thương hiệu.');
+        return;
+      }
+      group.remove();
+    };
+  };
+  list.querySelectorAll('[data-brand-group]').forEach(bindGroup);
+  $('#addBrandGroup').onclick = () => {
+    if (list.querySelectorAll('[data-brand-group]').length >= 20) {
+      toastAdmin('Chỉ được tạo tối đa 20 nhóm thương hiệu.');
+      return;
+    }
+    list.insertAdjacentHTML('beforeend', brandGroupEditorMarkup({
+      id: `brand-group-${Date.now()}`,
+      name: 'Nhóm thương hiệu mới',
+      brands: []
+    }));
+    const group = list.lastElementChild;
+    bindGroup(group);
+    group.querySelector('[data-brand-group-name]').focus();
+  };
+  form.onsubmit = async event => {
+    event.preventDefault();
+    try {
+      const nextGroups = brandGroupsFromEditor(form);
+      await saveShared('aeon-brands', nextGroups);
+      toastAdmin('Đã lưu danh sách thương hiệu và đồng bộ website.');
+      render();
     } catch (error) {
       toastAdmin(error.message);
     }
@@ -1430,7 +1635,7 @@ function customersPanel(panel) {
     <section class="admin-card sheet-sync-card">
       <div class="panel-action"><div><p class="eyebrow">GOOGLE SHEET</p><h2>Đồng bộ đơn đặt hàng</h2><p>Đơn vẫn được lưu nội bộ trước, sau đó mới gửi bản sao sang Apps Script.</p></div><a class="secondary-button" href="/google-apps-script-order-sync.gs" download>Tải mã Apps Script</a></div>
       <div class="sheet-sync-stats"><span><b>${syncedOrders}</b> Đã đồng bộ</span><span><b>${pendingOrders}</b> Đang chờ</span><span class="${failedOrders ? 'has-error' : ''}"><b>${failedOrders}</b> Lỗi đồng bộ</span></div>
-      <p class="sheet-sync-help">Endpoint: <a href="https://script.google.com/macros/s/AKfycbwCUvYd6yrCQtWFvTa1iiU5fYVlePltZbSbKErdWnx53NFKpvuyZ-nnZGPB5FzmxeM3xg/exec" target="_blank" rel="noopener noreferrer">Mở Apps Script ↗</a>. Deployment phải có hàm <code>doPost</code>, chạy dưới tài khoản của bạn và cho phép truy cập <b>Anyone</b>.</p>
+      <p class="sheet-sync-help">Endpoint được cấu hình bằng biến môi trường <code>GOOGLE_SHEET_WEB_APP_URL</code> trên máy chủ. Deployment phải có hàm <code>doPost</code>, chạy dưới tài khoản của bạn và cho phép truy cập <b>Anyone</b>.</p>
     </section>`);
 }
 
@@ -1448,7 +1653,20 @@ window.addEventListener('aeon-store-sync', () => {
 });
 
 renderAeonBrandLogos(aeonStore.ui());
-if (isAuthed()) {
-  aeonStore.setAdminSession(true);
-  showApp();
+async function initialiseAdminSession() {
+  try {
+    const response = await fetch('/api/admin/session', {cache:'no-store'});
+    const result = await response.json().catch(() => ({}));
+    if (response.ok && result.authenticated) {
+      aeonStore.setAdminSession(true);
+      showApp();
+      return;
+    }
+    aeonStore.setAdminSession(false);
+    if (result.configured === false) $('#loginError').textContent = 'Máy chủ chưa cấu hình ADMIN_USERNAME và ADMIN_PASSWORD.';
+  } catch {
+    aeonStore.setAdminSession(false);
+    $('#loginError').textContent = 'Không thể kiểm tra phiên quản trị. Hãy kiểm tra kết nối máy chủ.';
+  }
 }
+initialiseAdminSession();

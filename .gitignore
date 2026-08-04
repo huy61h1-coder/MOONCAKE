@@ -28,6 +28,7 @@ build/
 
 # Local secrets and runtime state
 .env
+.env.local
 .aeon-store.json
 .aeon-store.json.tmp
 .codex-sheet/

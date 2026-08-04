@@ -60,6 +60,7 @@ function normaliseProduct(product) {
     weight: String(product.weight || ''),
     ingredients: String(product.ingredients || ''),
     sku: String(product.sku || ''),
+    variantLabel: String(product.variantLabel || '').trim().slice(0, 100),
     variants: normaliseVariants(product.variants, price)
   };
 }
@@ -119,7 +120,14 @@ function promotionFor(subtotal, date = new Date()) {
 const grid = $('#productGrid');
 const cartItems = $('#cartItems');
 const brandDirectory = $('#brandDirectory');
+const productSearchForm = $('#topProductSearch');
+const productSearchInput = $('#productSearchInput');
+const clearProductSearch = $('#clearProductSearch');
+const productSort = $('#productSort');
+const catalogResult = $('#catalogResult');
 let activeBrand = '';
+let productSearchQuery = '';
+let productSortValue = 'featured';
 
 $('#openCart').innerHTML = '<svg class="cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L20 8H7.1"></path><circle cx="10" cy="20" r="1"></circle><circle cx="17" cy="20" r="1"></circle></svg><span>Giỏ hàng</span><b id="cartCount">0</b>';
 $('.drawer-head h2').textContent = 'Giỏ hàng';
@@ -131,12 +139,12 @@ $('footer p').textContent = '© 2026 AEON Mooncake.';
 document.body.insertAdjacentHTML('beforeend', '<button class="mobile-cart-cta" id="mobileCart" aria-label="Mở giỏ hàng"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L20 8H7.1"></path><circle cx="10" cy="20" r="1"></circle><circle cx="17" cy="20" r="1"></circle></svg><span>Giỏ hàng</span><b id="mobileCartCount">0</b><i>Xem giỏ →</i></button>');
 $('.site-header nav').insertAdjacentHTML('beforeend', '<a href="admin.html">Quản trị</a>');
 
-['product-detail.css', 'hotline.css', 'promotion.css', 'hero-promotion.css', 'catalog-focus.css', 'hero-compact.css', 'admin-layout.css', 'storefront-refine.css', 'mobile-storefront.css', 'official-assets.css', 'product-modal-fix.css', 'product-variants.css', 'storefront-product-ux.css', 'brand-directory.css', 'storefront-admin.css', 'theme-customization.css', 'quote-download.css'].forEach(href => {
+['product-detail.css', 'hotline.css?v=20260804-contact', 'promotion.css', 'hero-promotion.css', 'catalog-focus.css', 'hero-compact.css', 'admin-layout.css', 'storefront-refine.css', 'mobile-storefront.css', 'official-assets.css', 'product-modal-fix.css', 'product-variants.css', 'storefront-product-ux.css', 'brand-directory.css', 'storefront-admin.css', 'theme-customization.css', 'quote-download.css', 'catalog-search-sort.css?v=20260804-search-sort'].forEach(href => {
   document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href}));
 });
 
-document.body.insertAdjacentHTML('beforeend', '<aside class="hotline-widget" aria-label="Tư vấn đặt hàng"><a class="hotline-call" href="tel:0327747337"><span>Hotline tư vấn</span><b>0327 747 337</b></a><a class="zalo-link" href="https://zalo.me/0327747337" target="_blank" rel="noopener noreferrer" aria-label="Nhắn Zalo 0327747337">Zalo</a></aside>');
-$('footer').insertAdjacentHTML('beforeend', '<a class="footer-hotline" href="https://zalo.me/0327747337" target="_blank" rel="noopener noreferrer">Tư vấn: 0327 747 337 · Zalo ↗</a>');
+document.body.insertAdjacentHTML('beforeend', '<aside class="hotline-widget" aria-label="Liên hệ tư vấn"><a class="hotline-call contact-button" href="tel:0327747337" aria-label="Gọi hotline 0327 747 337"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.5 9.6 8 7.9 9.7c1.1 2.3 2.9 4.1 5.2 5.2l1.7-1.7 4.5 2.4-.9 3.8c-.2.8-.9 1.3-1.7 1.3C9.2 20.7 3.3 14.8 3.3 7.3c0-.8.5-1.5 1.3-1.7l2.6-.6Z"></path></svg><span><small>Hotline</small><b>0327 747 337</b></span></a><a class="zalo-link contact-button" href="https://zalo.me/0327747337" target="_blank" rel="noopener noreferrer" aria-label="Nhắn tin qua Zalo"><span>Chat</span><b>Zalo</b></a></aside>');
+$('footer').insertAdjacentHTML('beforeend', '<div class="footer-contact-actions" aria-label="Thông tin liên hệ"><a class="footer-hotline footer-contact-button" href="tel:0327747337">Hotline: 0327 747 337</a><a class="footer-zalo footer-contact-button" href="https://zalo.me/0327747337" target="_blank" rel="noopener noreferrer">Nhắn Zalo ↗</a></div>');
 
 $('.benefits').insertAdjacentHTML('afterend', '<section class="promotion-section" id="promotion"><div><p class="eyebrow">ƯU ĐÃI MÙA TRĂNG 2026</p><h2>Ưu đãi càng lớn,<br><em>quà tặng càng trọn.</em></h2><p>Áp dụng theo giá trị hóa đơn trong thời gian chương trình.</p></div><div class="promotion-list"><article><span>03/08 — 19/08</span><h3>Ưu đãi sớm</h3><strong>Giảm 8%</strong><p>Cho hóa đơn từ 1.000.000 ₫</p></article><article><span>20/08 — 25/09</span><h3>Chiết khấu chính thức</h3><p><b>5%</b> từ 3 triệu · <b>10%</b> từ 10 triệu<br><b>12%</b> từ 15 triệu · <b>15%</b> từ 30 triệu</p></article></div><small>Không áp dụng đồng thời ưu đãi thành viên 5% vào ngày 5 & 20 hằng tháng. Phiếu ưu đãi áp dụng cho giỏ quà không rượu.</small></section>');
 
@@ -744,6 +752,71 @@ function attachImageFallbacks(scope = document) {
   });
 }
 
+function normaliseCatalogText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase()
+    .trim();
+}
+
+function catalogProductText(product) {
+  return normaliseCatalogText([
+    product.name,
+    product.brand,
+    product.label,
+    product.sku,
+    product.description,
+    product.variantLabel,
+    ...product.variants.flatMap(variant => [variant.name, variant.sku])
+  ].join(' '));
+}
+
+function catalogProductPrice(product) {
+  const variantPrices = product.variants.map(variant => variant.price).filter(price => price > 0);
+  if (variantPrices.length) return Math.min(...variantPrices);
+  return product.price > 0 ? product.price : 0;
+}
+
+function sortCatalogProducts(items) {
+  const sorted = [...items];
+  const collator = new Intl.Collator('vi', {sensitivity:'base', numeric:true});
+  const [field, direction = 'asc'] = productSortValue.split('-');
+  const order = direction === 'desc' ? -1 : 1;
+
+  if (field === 'name') {
+    sorted.sort((first, second) => order * collator.compare(first.name, second.name));
+  } else if (field === 'brand') {
+    sorted.sort((first, second) => {
+      if (!first.brand && second.brand) return 1;
+      if (first.brand && !second.brand) return -1;
+      const byBrand = collator.compare(first.brand, second.brand);
+      return order * (byBrand || collator.compare(first.name, second.name));
+    });
+  } else if (field === 'price') {
+    sorted.sort((first, second) => {
+      const firstPrice = catalogProductPrice(first);
+      const secondPrice = catalogProductPrice(second);
+      if (!firstPrice && secondPrice) return 1;
+      if (firstPrice && !secondPrice) return -1;
+      return order * (firstPrice - secondPrice || collator.compare(first.name, second.name));
+    });
+  }
+
+  return sorted;
+}
+
+function updateCatalogResult(visibleCount, totalCount) {
+  if (!catalogResult) return;
+  const context = [];
+  if (activeBrand) context.push(`nhãn hiệu ${activeBrand}`);
+  if (productSearchQuery) context.push(`từ khóa “${productSearchQuery}”`);
+  catalogResult.textContent = context.length
+    ? `${visibleCount} / ${totalCount} sản phẩm · ${context.join(' · ')}`
+    : `${totalCount} sản phẩm`;
+}
+
 function renderBrandDirectory() {
   if (!brandDirectory) return;
   activeBrand = normaliseAeonBrand(activeBrand);
@@ -752,7 +825,7 @@ function renderBrandDirectory() {
     <div><h3>Thương hiệu</h3><p>${selectedLabel}</p></div>
     <button type="button" class="brand-filter-reset${activeBrand ? '' : ' is-active'}" data-brand-filter="" aria-pressed="${activeBrand ? 'false' : 'true'}">Tất cả</button>
   </div>
-  <div class="brand-groups">${AEON_BRAND_GROUPS.map(group => `<section class="brand-group"><h4>${escapeHtml(group.name)}</h4><div class="brand-group-list">${group.brands.map(brand => `<button type="button" class="brand-chip${activeBrand === brand.name ? ' is-active' : ''}" data-brand-filter="${escapeHtml(brand.name)}" aria-pressed="${activeBrand === brand.name ? 'true' : 'false'}">${escapeHtml(brand.name)}</button>`).join('')}</div></section>`).join('')}</div>`;
+  <div class="brand-groups">${aeonBrandGroups().filter(group => group.brands.length).map(group => `<section class="brand-group"><h4>${escapeHtml(group.name)}</h4><div class="brand-group-list">${group.brands.map(brand => `<button type="button" class="brand-chip${activeBrand === brand.name ? ' is-active' : ''}" data-brand-filter="${escapeHtml(brand.name)}" aria-pressed="${activeBrand === brand.name ? 'true' : 'false'}">${escapeHtml(brand.name)}</button>`).join('')}</div></section>`).join('')}</div>`;
 }
 
 function reconcileCart() {
@@ -778,13 +851,20 @@ function renderProducts() {
   products = aeonStore.products().map(normaliseProduct).filter(product => product.id);
   reconcileCart();
   renderBrandDirectory();
-  const visibleProducts = activeBrand ? products.filter(product => product.brand === activeBrand) : products;
+  const searchTerm = normaliseCatalogText(productSearchQuery);
+  const filteredProducts = products.filter(product => {
+    const matchesBrand = !activeBrand || product.brand === activeBrand;
+    const matchesSearch = !searchTerm || catalogProductText(product).includes(searchTerm);
+    return matchesBrand && matchesSearch;
+  });
+  const visibleProducts = sortCatalogProducts(filteredProducts);
+  updateCatalogResult(visibleProducts.length, products.length);
   grid.dataset.productCount = String(visibleProducts.length);
   grid.classList.toggle('storefront-admin-grid', isStorefrontAdmin());
 
   if (!visibleProducts.length) {
     const emptyContent = products.length
-      ? `<div class="catalog-empty brand-empty"><span>✦</span><h3>Chưa có sản phẩm của ${escapeHtml(activeBrand)}</h3><p>Hãy chọn thương hiệu khác hoặc xem toàn bộ danh mục.</p><button type="button" class="catalog-admin-add" data-brand-filter="">Xem tất cả sản phẩm</button></div>`
+      ? `<div class="catalog-empty brand-empty"><span>✦</span><h3>Không tìm thấy sản phẩm phù hợp</h3><p>Hãy thử từ khóa khác, đổi nhãn hiệu hoặc xem toàn bộ danh mục.</p><button type="button" class="catalog-admin-add" data-clear-catalog-filters>Xóa bộ lọc</button></div>`
       : `<div class="catalog-empty"><span>✦</span><h3>Danh mục đang được cập nhật</h3><p>Hình ảnh, thông tin sản phẩm và giá bán sẽ được bổ sung ngay khi có công bố chính thức.</p>${isStorefrontAdmin() ? '<button type="button" class="catalog-admin-add" data-storefront-new>+ Tạo sản phẩm đầu tiên</button>' : ''}</div>`;
     grid.innerHTML = emptyContent;
     renderCart();
@@ -934,10 +1014,12 @@ function openProductDetail(id) {
 
   const variants = hasVariants(product);
   const canOrder = canOrderProduct(product);
+  const variantLabel = product.variantLabel || 'Phân loại';
+  const variantPrompt = `Chọn ${variantLabel.toLocaleLowerCase('vi-VN')}`;
   const detailText = product.details || product.description || 'Thông tin chi tiết đang được cập nhật.';
   const detailHtml = AEONRichText.render(detailText);
   $('#productDetailBody').innerHTML = `<div class="detail-art" style="--product-bg:${safeColor(product.bg)}">${productImageMarkup(product, 'detail-official-image', 'detail-image-placeholder', 'Hình ảnh chính thức<br>đang cập nhật')}</div>
-    <div class="detail-copy">${product.brand ? `<p class="detail-brand">${escapeHtml(product.brand)}</p>` : ''}${product.label ? `<p class="eyebrow">${escapeHtml(product.label)}</p>` : ''}<h2>${escapeHtml(product.name)}</h2><p class="detail-price" id="detailPrice">${priceLabel(product)}</p>${variants ? `<section class="detail-variant-picker" aria-labelledby="detailVariantLabel"><div class="detail-variant-head"><span id="detailVariantLabel">Chọn phân loại</span><b id="detailVariantStatus">Vui lòng chọn một loại</b></div><div class="detail-variant-options" role="group" aria-label="Phân loại sản phẩm">${product.variants.map(variant => `<button type="button" data-detail-variant="${escapeHtml(variant.id)}" aria-pressed="false"><span>${escapeHtml(variant.name)}</span><strong>${variant.price > 0 ? fmt(variant.price) : 'Liên hệ'}</strong></button>`).join('')}</div></section>` : ''}<p class="detail-meta" id="detailSku"${product.sku ? '' : ' hidden'}>${product.sku ? `Mã sản phẩm: ${escapeHtml(product.sku)}` : ''}</p><p class="detail-description">${escapeHtml(detailText)}</p><dl><div><dt>Quy cách</dt><dd>${escapeHtml(product.weight || 'Thông tin đang cập nhật')}</dd></div><div><dt>Thành phần nổi bật</dt><dd>${escapeHtml(product.ingredients || 'Thông tin đang cập nhật')}</dd></div></dl><div class="detail-actions">${variants ? `<button class="button primary" data-detail-add="${escapeHtml(product.id)}" id="detailAdd" disabled>Chọn phân loại</button><button class="quantity-button" data-detail-qty="-1" aria-label="Giảm số lượng">−</button><b id="detailQty">1</b><button class="quantity-button" data-detail-qty="1" aria-label="Tăng số lượng">+</button>` : canOrder ? `<button class="button primary" data-detail-add="${escapeHtml(product.id)}" id="detailAdd">Thêm vào giỏ <span>→</span></button><button class="quantity-button" data-detail-qty="-1" aria-label="Giảm số lượng">−</button><b id="detailQty">1</b><button class="quantity-button" data-detail-qty="1" aria-label="Tăng số lượng">+</button>` : '<a class="button primary" href="tel:0327747337">Liên hệ tư vấn <span>→</span></a>'}</div></div>`;
+    <div class="detail-copy">${product.brand ? `<p class="detail-brand">${escapeHtml(product.brand)}</p>` : ''}${product.label ? `<p class="eyebrow">${escapeHtml(product.label)}</p>` : ''}<h2>${escapeHtml(product.name)}</h2><p class="detail-price" id="detailPrice">${priceLabel(product)}</p>${variants ? `<section class="detail-variant-picker" aria-labelledby="detailVariantLabel"><div class="detail-variant-head"><span id="detailVariantLabel">${escapeHtml(variantPrompt)}</span><b id="detailVariantStatus">Vui lòng chọn một lựa chọn</b></div><div class="detail-variant-options" role="group" aria-label="${escapeHtml(variantLabel)}">${product.variants.map(variant => `<button type="button" data-detail-variant="${escapeHtml(variant.id)}" aria-pressed="false"><span>${escapeHtml(variant.name)}</span><strong>${variant.price > 0 ? fmt(variant.price) : 'Liên hệ'}</strong></button>`).join('')}</div></section>` : ''}<p class="detail-meta" id="detailSku"${product.sku ? '' : ' hidden'}>${product.sku ? `Mã sản phẩm: ${escapeHtml(product.sku)}` : ''}</p><p class="detail-description">${escapeHtml(detailText)}</p><dl><div><dt>Quy cách</dt><dd>${escapeHtml(product.weight || 'Thông tin đang cập nhật')}</dd></div><div><dt>Thành phần nổi bật</dt><dd>${escapeHtml(product.ingredients || 'Thông tin đang cập nhật')}</dd></div></dl><div class="detail-actions">${variants ? `<button class="button primary" data-detail-add="${escapeHtml(product.id)}" id="detailAdd" disabled>${escapeHtml(variantPrompt)}</button><button class="quantity-button" data-detail-qty="-1" aria-label="Giảm số lượng">−</button><b id="detailQty">1</b><button class="quantity-button" data-detail-qty="1" aria-label="Tăng số lượng">+</button>` : canOrder ? `<button class="button primary" data-detail-add="${escapeHtml(product.id)}" id="detailAdd">Thêm vào giỏ <span>→</span></button><button class="quantity-button" data-detail-qty="-1" aria-label="Giảm số lượng">−</button><b id="detailQty">1</b><button class="quantity-button" data-detail-qty="1" aria-label="Tăng số lượng">+</button>` : '<a class="button primary" href="tel:0327747337">Liên hệ tư vấn <span>→</span></a>'}</div></div>`;
   const detailDescription = $('#productDetailBody').querySelector('.detail-description');
   detailDescription.outerHTML = '<div class="detail-description richtext-output">' + detailHtml + '</div>';
   modal.dataset.id = id;
@@ -967,7 +1049,44 @@ function toggleCart(force) {
   if (open) $('#closeCart').focus();
 }
 
+productSearchForm.addEventListener('submit', event => {
+  event.preventDefault();
+  productSearchQuery = productSearchInput.value.trim();
+  clearProductSearch.hidden = !productSearchQuery;
+  renderProducts();
+  catalogSection.scrollIntoView({behavior:'smooth', block:'start'});
+});
+
+productSearchInput.addEventListener('input', () => {
+  productSearchQuery = productSearchInput.value.trim();
+  clearProductSearch.hidden = !productSearchQuery;
+  renderProducts();
+});
+
+clearProductSearch.addEventListener('click', () => {
+  productSearchInput.value = '';
+  productSearchQuery = '';
+  clearProductSearch.hidden = true;
+  renderProducts();
+  productSearchInput.focus();
+});
+
+productSort.addEventListener('change', () => {
+  productSortValue = productSort.value;
+  renderProducts();
+});
+
 document.addEventListener('click', event => {
+  const clearCatalogFilters = event.target.closest('[data-clear-catalog-filters]');
+  if (clearCatalogFilters) {
+    activeBrand = '';
+    productSearchQuery = '';
+    productSearchInput.value = '';
+    clearProductSearch.hidden = true;
+    renderProducts();
+    return;
+  }
+
   const brandFilter = event.target.closest('[data-brand-filter]');
   if (brandFilter) {
     activeBrand = normaliseAeonBrand(brandFilter.dataset.brandFilter);
@@ -1179,7 +1298,7 @@ const refreshStorefront = () => {
 };
 
 window.addEventListener('storage', event => {
-  if (['aeon-layout', 'aeon-products', 'aeon-ui', 'aeon-admin'].includes(event.key)) refreshStorefront();
+  if (['aeon-layout', 'aeon-products', 'aeon-ui', 'aeon-brands', 'aeon-admin'].includes(event.key)) refreshStorefront();
 });
 window.addEventListener('aeon-store-sync', refreshStorefront);
 

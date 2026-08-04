@@ -5,7 +5,7 @@
   "description": "Website danh mục và đặt bánh Trung Thu AEON 2026.",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check app.js && node --check admin.js"
+    "check": "node --check server.js && node --check data.js && node --check app.js && node --check admin.js && node --check product-import.js"
   },
   "engines": {
     "node": ">=20"

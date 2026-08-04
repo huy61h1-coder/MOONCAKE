@@ -326,10 +326,16 @@ function candidatesFromText(sourceText, sourceKind) {
 function headerField(value) {
   const key = normaliseKey(value);
   if (!key) return '';
+  if (/(^| )(id he thong|id san pham|product id|system id)( |$)/.test(key)) return 'id';
+  if (/(ten phan loai|nhom phan loai|variant label|variant group|option name)/.test(key)) return 'variantLabel';
+  if (/(ma phan loai|ma bien the|variant sku|option sku)/.test(key)) return 'variantSku';
+  if (/(gia phan loai|gia bien the|variant price|option price)/.test(key)) return 'variantPrice';
+  if (/(gia tri phan loai|phan loai|bien the|lua chon|variant value|option value)/.test(key)) return 'variantName';
+  if (/(chi tiet san pham|noi dung chi tiet|full details)/.test(key)) return 'details';
+  if (/(ma san pham|ma sp|sku|product code|code)/.test(key)) return 'sku';
   if (/(^| )(ten san pham|san pham|product name|product|item name|ten)( |$)/.test(key)) return 'name';
   if (/(^| )(gia ban|don gia|gia|price|unit price|vnd|vnđ)( |$)/.test(key)) return 'price';
   if (/(mo ta|description|details|noi dung|thong tin)/.test(key)) return 'description';
-  if (/(ma san pham|ma sp|sku|product code|code)/.test(key)) return 'sku';
   if (/(thuong hieu|brand|nhan hang)/.test(key)) return 'brand';
   if (/(nhan|label|collection|bo suu tap)/.test(key)) return 'label';
   if (/(quy cach|khoi luong|trong luong|weight|net weight)/.test(key)) return 'weight';
@@ -357,7 +363,7 @@ function cellText(value) {
 
 function isInstructionSheet(sheetName) {
   const key = normaliseKey(sheetName);
-  return /^(?:huong dan|huong dan su dung|read me|instructions?|ghi chu|notes?)$/.test(key);
+  return /^(?:huong dan|huong dan su dung|read me|instructions?|ghi chu|notes?|vi du|examples?)$/.test(key);
 }
 
 function candidatesFromSpreadsheet(buffer, filename = '') {
@@ -366,6 +372,7 @@ function candidatesFromSpreadsheet(buffer, filename = '') {
   const workbook = XLSX.read(source, {type: isCsv ? 'string' : 'buffer', cellDates: true, raw: false});
   const candidates = [];
   const warnings = [];
+  const groupedCandidates = new Map();
 
   workbook.SheetNames.slice(0, 10).forEach(sheetName => {
     if (candidates.length >= MAX_CANDIDATES) return;
@@ -377,6 +384,7 @@ function candidatesFromSpreadsheet(buffer, filename = '') {
       warnings.push(`Không tìm thấy cột Tên sản phẩm/Giá ở sheet “${sheetName}”.`);
       return;
     }
+    const hasVariantColumns = header.fields.some(field => ['variantLabel', 'variantName', 'variantSku', 'variantPrice'].includes(field));
 
     rows.slice(header.index + 1).forEach(row => {
       if (candidates.length >= MAX_CANDIDATES || !Array.isArray(row)) return;
@@ -386,26 +394,73 @@ function candidatesFromSpreadsheet(buffer, filename = '') {
       });
       const name = tidyName(record.name);
       const price = parsePrice(record.price);
+      const variantName = cleanText(record.variantName || '', 120);
+      const variantSku = cleanText(record.variantSku || '', 100);
+      const variantPrice = parsePrice(record.variantPrice);
+      const effectivePrice = price || variantPrice;
       const hasValues = Object.values(record).some(Boolean);
       if (!hasValues || !name) return;
 
       const rowWarnings = [];
-      if (!price) rowWarnings.push('Chưa nhận diện được giá bán. Hãy nhập giá trước khi lưu.');
-      candidates.push({
-        name,
-        price: price || 0,
-        description: cleanText(record.description || '', 500),
-        sku: cleanText(record.sku || '', 100),
-        brand: cleanText(record.brand || '', 100),
-        label: cleanText(record.label || '', 100),
-        weight: cleanText(record.weight || '', 100),
-        ingredients: cleanText(record.ingredients || '', 300),
-        details: cleanText(record.description || '', 800),
-        image: cleanText(record.image || '', 600),
-        confidence: price ? 96 : 74,
-        warnings: rowWarnings,
-        source: 'excel'
+      if (!effectivePrice) rowWarnings.push('Chưa nhận diện được giá bán hoặc giá phân loại. Hãy nhập giá trước khi lưu.');
+      if (!variantName && (variantSku || variantPrice)) rowWarnings.push('Dòng có mã/giá phân loại nhưng chưa có Giá trị phân loại.');
+
+      const systemId = cleanText(record.id || '', 100);
+      const sku = cleanText(record.sku || '', 100);
+      const brand = cleanText(record.brand || '', 100);
+      const groupKey = systemId
+        ? `id:${normaliseKey(systemId)}`
+        : sku
+          ? `sku:${normaliseKey(sku)}`
+          : `name:${normaliseKey(name)}|brand:${normaliseKey(brand)}`;
+      let candidate = groupedCandidates.get(groupKey);
+      if (!candidate) {
+        candidate = {
+          id: systemId,
+          name,
+          price: effectivePrice || 0,
+          description: cleanText(record.description || '', 500),
+          sku,
+          brand,
+          label: cleanText(record.label || '', 100),
+          weight: cleanText(record.weight || '', 100),
+          ingredients: cleanText(record.ingredients || '', 300),
+          details: cleanText(record.details || record.description || '', 1200),
+          image: cleanText(record.image || '', 600),
+          variantLabel: cleanText(record.variantLabel || '', 100),
+          variants: [],
+          hasVariantColumns,
+          confidence: effectivePrice ? 96 : 74,
+          warnings: [],
+          source: 'excel'
+        };
+        groupedCandidates.set(groupKey, candidate);
+        candidates.push(candidate);
+      } else {
+        ['description', 'sku', 'brand', 'label', 'weight', 'ingredients', 'details', 'image', 'variantLabel'].forEach(field => {
+          if (!candidate[field] && record[field]) candidate[field] = cleanText(record[field], field === 'image' ? 600 : field === 'details' ? 1200 : 500);
+        });
+        if (effectivePrice) candidate.price = candidate.price ? Math.min(candidate.price, effectivePrice) : effectivePrice;
+        candidate.hasVariantColumns ||= hasVariantColumns;
+        candidate.confidence = Math.max(candidate.confidence, effectivePrice ? 96 : 74);
+      }
+
+      rowWarnings.forEach(warning => {
+        if (!candidate.warnings.includes(warning)) candidate.warnings.push(warning);
       });
+      if (variantName) {
+        const duplicateVariant = candidate.variants.some(variant => (
+          variantSku && normaliseKey(variant.sku) === normaliseKey(variantSku)
+        ) || normaliseKey(variant.name) === normaliseKey(variantName));
+        if (!duplicateVariant) {
+          candidate.variants.push({
+            id: cleanText(variantSku || variantName, 100).replace(/\s+/g, '-'),
+            name: variantName,
+            price: variantPrice || price || 0,
+            sku: variantSku
+          });
+        }
+      }
     });
   });
 

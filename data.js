@@ -27,11 +27,59 @@ const AEON_BRAND_GROUPS = [
   }
 ];
 
-const AEON_BRANDS = AEON_BRAND_GROUPS.flatMap(group => group.brands.map(brand => ({
-  ...brand,
-  groupId: group.id,
-  groupName: group.name
-})));
+function cleanAeonBrandGroups(value) {
+  const source = Array.isArray(value) && value.length ? value : AEON_BRAND_GROUPS;
+  const groupIds = new Set();
+  const brandKeys = new Set();
+  return source.slice(0, 20).map((group, groupIndex) => {
+    const name = String(group?.name || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    if (!name) return null;
+    const baseId = String(group?.id || name)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/đ/g, 'd')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 60) || `group-${groupIndex + 1}`;
+    let id = baseId;
+    let suffix = 2;
+    while (groupIds.has(id)) id = `${baseId}-${suffix++}`;
+    groupIds.add(id);
+
+    const brands = (Array.isArray(group?.brands) ? group.brands : []).slice(0, 200).map(brand => {
+      const brandName = String(brand?.name ?? brand ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      const key = aeonBrandKey(brandName);
+      if (!brandName || !key || brandKeys.has(key)) return null;
+      brandKeys.add(key);
+      const aliases = Array.isArray(brand?.aliases)
+        ? brand.aliases.map(alias => String(alias || '').replace(/\s+/g, ' ').trim().slice(0, 120)).filter(Boolean).slice(0, 12)
+        : [];
+      return {name: brandName, ...(aliases.length ? {aliases} : {})};
+    }).filter(Boolean);
+    return {id, name, brands};
+  }).filter(Boolean);
+}
+
+function aeonBrandGroups() {
+  return typeof aeonStore === 'object' && aeonStore?.brands
+    ? aeonStore.brands()
+    : cleanAeonBrandGroups(AEON_BRAND_GROUPS);
+}
+
+function aeonBrands() {
+  return aeonBrandGroups().flatMap(group => group.brands.map(brand => ({
+    ...brand,
+    groupId: group.id,
+    groupName: group.name
+  })));
+}
+
+function aeonBrandHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+  }[char]));
+}
 
 function aeonBrandKey(value) {
   return String(value ?? '')
@@ -45,13 +93,13 @@ function aeonBrandKey(value) {
 function normaliseAeonBrand(value) {
   const key = aeonBrandKey(value);
   if (!key) return '';
-  const matched = AEON_BRANDS.find(brand => [brand.name, ...(brand.aliases || [])].some(alias => aeonBrandKey(alias) === key));
-  return matched?.name || '';
+  const matched = aeonBrands().find(brand => [brand.name, ...(brand.aliases || [])].some(alias => aeonBrandKey(alias) === key));
+  return matched?.name || String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
 function aeonBrandOptions(selectedBrand = '') {
   const selected = normaliseAeonBrand(selectedBrand);
-  return `<option value="">Chưa chọn thương hiệu</option>${AEON_BRAND_GROUPS.map(group => `<optgroup label="${group.name}">${group.brands.map(brand => `<option value="${brand.name}"${brand.name === selected ? ' selected' : ''}>${brand.name}</option>`).join('')}</optgroup>`).join('')}`;
+  return `<option value="">Chưa chọn thương hiệu</option>${aeonBrandGroups().map(group => `<optgroup label="${aeonBrandHtml(group.name)}">${group.brands.map(brand => `<option value="${aeonBrandHtml(brand.name)}"${brand.name === selected ? ' selected' : ''}>${aeonBrandHtml(brand.name)}</option>`).join('')}</optgroup>`).join('')}`;
 }
 
 const AEON_DEFAULT_UI = {
@@ -176,7 +224,7 @@ const AEON_DEFAULT_LAYOUT = {
   logoSize: 25
 };
 
-const sharedKeys = ['aeon-products', 'aeon-ui', 'aeon-layout', 'aeon-customers', 'aeon-orders'];
+const sharedKeys = ['aeon-products', 'aeon-ui', 'aeon-layout', 'aeon-brands', 'aeon-customers', 'aeon-orders'];
 const canSync = () => location.protocol === 'http:' || location.protocol === 'https:';
 
 const aeonStore = {
@@ -231,6 +279,29 @@ const aeonStore = {
 
   layout() {
     return {...AEON_DEFAULT_LAYOUT, ...this.get('aeon-layout', {})};
+  },
+
+  brands() {
+    const configured = cleanAeonBrandGroups(this.get('aeon-brands', AEON_BRAND_GROUPS));
+    const known = new Set(configured.flatMap(group => group.brands.map(brand => aeonBrandKey(brand.name))));
+    const used = this.products()
+      .map(product => String(product?.brand || '').replace(/\s+/g, ' ').trim().slice(0, 120))
+      .filter(brand => brand && !known.has(aeonBrandKey(brand)));
+    if (!used.length) return configured;
+
+    const groups = configured.map(group => ({...group, brands: group.brands.map(brand => ({...brand}))}));
+    let other = groups.find(group => group.id === 'other');
+    if (!other) {
+      other = {id: 'other', name: 'Thương hiệu khác', brands: []};
+      groups.push(other);
+    }
+    used.forEach(name => {
+      const key = aeonBrandKey(name);
+      if (!key || known.has(key)) return;
+      known.add(key);
+      other.brands.push({name});
+    });
+    return groups;
   },
 
   customers() {

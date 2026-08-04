@@ -1,6 +1,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const {analyseProductFile, kindFromFile} = require('./product-import');
 const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
@@ -15,7 +16,12 @@ const seedStatePath = path.join(root, '.aeon-store.seed.json');
 const maxUploadBytes = 10 * 1024 * 1024;
 const maxImportBytes = 15 * 1024 * 1024;
 const maxQuoteUploadBytes = 20 * 1024 * 1024;
-const googleSheetWebAppUrl = process.env.GOOGLE_SHEET_WEB_APP_URL || 'https://script.google.com/macros/s/AKfycbwCUvYd6yrCQtWFvTa1iiU5fYVlePltZbSbKErdWnx53NFKpvuyZ-nnZGPB5FzmxeM3xg/exec';
+const adminUsername = String(process.env.ADMIN_USERNAME || '').trim();
+const adminPassword = String(process.env.ADMIN_PASSWORD || '');
+const googleSheetWebAppUrl = String(process.env.GOOGLE_SHEET_WEB_APP_URL || '').trim();
+const adminSessionCookie = 'aeon_admin_session';
+const adminSessionTtlSeconds = 12 * 60 * 60;
+const adminSessions = new Map();
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.ico':'image/x-icon','.pdf':'application/pdf','.csv':'text/csv; charset=utf-8','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.xls':'application/vnd.ms-excel'};
 const imageExtensions = {'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/gif':'.gif','image/svg+xml':'.svg'};
 const uploadImageTypes = new Set(Object.keys(imageExtensions));
@@ -24,6 +30,55 @@ fs.mkdirSync(quoteUploadDir, {recursive:true});
 
 function json(response, status, body) { response.writeHead(status, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}); response.end(JSON.stringify(body)); }
 function readBody(request, maxBytes = maxUploadBytes) { return new Promise((resolve, reject) => { let size = 0; const chunks = []; const maxRequestBytes = Math.ceil(maxBytes * 1.38) + 65536; request.on('data', chunk => { size += chunk.length; if (size > maxRequestBytes) { reject(new Error(`Tệp vượt quá dung lượng cho phép (${Math.round(maxBytes / 1024 / 1024)} MB).`)); request.destroy(); return; } chunks.push(chunk); }); request.on('end', () => resolve(Buffer.concat(chunks))); request.on('error', reject); }); }
+
+function configuredAdmin() {
+  return Boolean(adminUsername && adminPassword);
+}
+
+function secureTextEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left ?? ''), 'utf8');
+  const rightBuffer = Buffer.from(String(right ?? ''), 'utf8');
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function requestCookies(request) {
+  return String(request.headers.cookie || '').split(';').reduce((cookies, pair) => {
+    const separator = pair.indexOf('=');
+    if (separator < 0) return cookies;
+    const key = pair.slice(0, separator).trim();
+    const value = pair.slice(separator + 1).trim();
+    if (key) cookies[key] = value;
+    return cookies;
+  }, {});
+}
+
+function adminSessionToken(request) {
+  const token = requestCookies(request)[adminSessionCookie] || '';
+  const expiresAt = adminSessions.get(token);
+  if (!token || !expiresAt) return '';
+  if (expiresAt <= Date.now()) {
+    adminSessions.delete(token);
+    return '';
+  }
+  adminSessions.set(token, Date.now() + adminSessionTtlSeconds * 1000);
+  return token;
+}
+
+function isAdminRequest(request) {
+  return Boolean(adminSessionToken(request));
+}
+
+function adminCookie(request, token, maxAge = adminSessionTtlSeconds) {
+  const forwardedProtocol = String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  const secure = forwardedProtocol === 'https' ? '; Secure' : '';
+  return `${adminSessionCookie}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`;
+}
+
+function requireAdmin(request, response) {
+  if (isAdminRequest(request)) return true;
+  json(response, 401, {error:'Phiên quản trị đã hết hạn. Vui lòng đăng nhập lại.'});
+  return false;
+}
 function readState() {
   try {
     return JSON.parse(fs.readFileSync(statePath, 'utf8'));
@@ -119,17 +174,19 @@ function customerWorkbook(state) {
 }
 
 const pdfRegularFont = [
+  path.join(root, 'assets', 'fonts', 'NotoSans-Regular.ttf'),
   'C:\\Windows\\Fonts\\arial.ttf',
   '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 ].find(fontPath => fs.existsSync(fontPath)) || 'Helvetica';
 const pdfBoldFont = [
+  path.join(root, 'assets', 'fonts', 'NotoSans-Bold.ttf'),
   'C:\\Windows\\Fonts\\arialbd.ttf',
   '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 ].find(fontPath => fs.existsSync(fontPath)) || 'Helvetica-Bold';
 const pdfMoney = new Intl.NumberFormat('vi-VN');
 
 function cleanPdfText(value, limit = 1000) {
-  return String(value ?? '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, limit);
+  return String(value ?? '').normalize('NFC').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, limit);
 }
 
 function formatPdfMoney(value) {
@@ -346,28 +403,119 @@ async function orderPdfBuffer(state, requestedCode) {
   });
 }
 
-function productImportTemplateWorkbook() {
-  const headers = ['Tên sản phẩm', 'Giá bán', 'Thương hiệu', 'Mã sản phẩm', 'Nhãn hiển thị', 'Quy cách / khối lượng', 'Thành phần', 'Mô tả', 'Ảnh (URL)'];
-  const worksheet = worksheetFromRows(headers, [{}], [32, 16, 26, 18, 18, 24, 36, 52, 46]);
-  worksheet['!freeze'] = {xSplit: 0, ySplit: 1};
+const productWorkbookHeaders = [
+  'ID hệ thống',
+  'Tên sản phẩm',
+  'Giá bán',
+  'Thương hiệu',
+  'Mã sản phẩm',
+  'Nhãn hiển thị',
+  'Quy cách / khối lượng',
+  'Thành phần',
+  'Mô tả',
+  'Chi tiết sản phẩm',
+  'Ảnh (URL)',
+  'Tên phân loại',
+  'Giá trị phân loại',
+  'Mã phân loại',
+  'Giá phân loại'
+];
 
+const productWorkbookWidths = [20, 38, 16, 26, 20, 18, 24, 38, 46, 58, 46, 20, 24, 20, 18];
+
+function productWorkbookRow(product, variant = null) {
+  return {
+    'ID hệ thống': spreadsheetText(product?.id),
+    'Tên sản phẩm': spreadsheetText(product?.name),
+    'Giá bán': spreadsheetNumber(product?.price),
+    'Thương hiệu': spreadsheetText(product?.brand),
+    'Mã sản phẩm': spreadsheetText(product?.sku),
+    'Nhãn hiển thị': spreadsheetText(product?.label),
+    'Quy cách / khối lượng': spreadsheetText(product?.weight),
+    'Thành phần': spreadsheetText(product?.ingredients),
+    'Mô tả': spreadsheetText(product?.description),
+    'Chi tiết sản phẩm': spreadsheetText(product?.details),
+    'Ảnh (URL)': spreadsheetText(product?.image),
+    'Tên phân loại': spreadsheetText(product?.variantLabel || (variant ? 'Phân loại' : '')),
+    'Giá trị phân loại': spreadsheetText(variant?.name),
+    'Mã phân loại': spreadsheetText(variant?.sku),
+    'Giá phân loại': variant ? spreadsheetNumber(variant.price) : ''
+  };
+}
+
+function productWorkbookRows(products) {
+  return products.flatMap(product => {
+    const variants = Array.isArray(product?.variants)
+      ? product.variants.filter(variant => String(variant?.name || '').trim())
+      : [];
+    return variants.length
+      ? variants.map(variant => productWorkbookRow(product, variant))
+      : [productWorkbookRow(product)];
+  });
+}
+
+function productWorkbookGuide() {
   const guideHeaders = ['Cột', 'Yêu cầu', 'Ví dụ'];
   const guideRows = [
-    {'Cột': 'Tên sản phẩm', 'Yêu cầu': 'Bắt buộc', 'Ví dụ': 'Hộp bánh Đoàn Viên'},
-    {'Cột': 'Giá bán', 'Yêu cầu': 'Bắt buộc để có thể đặt hàng', 'Ví dụ': '750000'},
+    {'Cột': 'ID hệ thống', 'Yêu cầu': 'Giữ nguyên khi cập nhật danh sách đã tải xuống; để trống khi tạo sản phẩm mới', 'Ví dụ': 'sp-2026-01'},
+    {'Cột': 'Tên sản phẩm', 'Yêu cầu': 'Bắt buộc; lặp lại trên các dòng phân loại của cùng sản phẩm', 'Ví dụ': 'Hộp quà Trung Thu sắc màu'},
+    {'Cột': 'Giá bán', 'Yêu cầu': 'Giá chung khi không có phân loại; nếu có phân loại, hệ thống lấy giá thấp nhất', 'Ví dụ': '350000'},
     {'Cột': 'Thương hiệu', 'Yêu cầu': 'Chọn đúng tên thương hiệu trong hệ thống nếu có', 'Ví dụ': 'Kinh Đô'},
-    {'Cột': 'Mã sản phẩm', 'Yêu cầu': 'Không bắt buộc', 'Ví dụ': 'AM-2026-01'},
+    {'Cột': 'Mã sản phẩm', 'Yêu cầu': 'Nên có và phải giống nhau trên các dòng phân loại của cùng sản phẩm', 'Ví dụ': 'AM-2026-01'},
     {'Cột': 'Nhãn hiển thị', 'Yêu cầu': 'Không bắt buộc', 'Ví dụ': 'Bán chạy'},
     {'Cột': 'Quy cách / khối lượng', 'Yêu cầu': 'Không bắt buộc', 'Ví dụ': '4 bánh · 720g'},
     {'Cột': 'Thành phần', 'Yêu cầu': 'Không bắt buộc', 'Ví dụ': 'Hạt sen · trứng muối'},
     {'Cột': 'Mô tả', 'Yêu cầu': 'Không bắt buộc', 'Ví dụ': 'Hộp quà phù hợp để biếu tặng.'},
-    {'Cột': 'Ảnh (URL)', 'Yêu cầu': 'Không bắt buộc; dùng link ảnh hoặc đường dẫn /assets/uploads/...', 'Ví dụ': 'https://example.com/mooncake.jpg'}
+    {'Cột': 'Chi tiết sản phẩm', 'Yêu cầu': 'Không bắt buộc; hỗ trợ nội dung nhiều dòng', 'Ví dụ': 'Thông tin chi tiết về sản phẩm'},
+    {'Cột': 'Ảnh (URL)', 'Yêu cầu': 'Không bắt buộc; dùng link ảnh hoặc đường dẫn /assets/uploads/...', 'Ví dụ': 'https://example.com/mooncake.jpg'},
+    {'Cột': 'Tên phân loại', 'Yêu cầu': 'Tên nhóm lựa chọn; lặp lại trên các dòng của cùng sản phẩm', 'Ví dụ': 'Màu sắc'},
+    {'Cột': 'Giá trị phân loại', 'Yêu cầu': 'Mỗi lựa chọn nằm trên một dòng riêng', 'Ví dụ': 'Đỏ'},
+    {'Cột': 'Mã phân loại', 'Yêu cầu': 'Không bắt buộc nhưng không được trùng trong cùng sản phẩm', 'Ví dụ': 'AM-2026-01-RED'},
+    {'Cột': 'Giá phân loại', 'Yêu cầu': 'Bắt buộc khi có Giá trị phân loại', 'Ví dụ': '350000'}
   ];
-  const guide = worksheetFromRows(guideHeaders, guideRows, [28, 56, 48]);
+  return worksheetFromRows(guideHeaders, guideRows, [28, 72, 52]);
+}
+
+function productImportTemplateWorkbook() {
+  const worksheet = worksheetFromRows(productWorkbookHeaders, [{}], productWorkbookWidths);
+  worksheet['!freeze'] = {xSplit: 0, ySplit: 1};
+
+  const exampleProduct = {
+    id: '',
+    name: 'Hộp quà Trung Thu sắc màu',
+    price: 350000,
+    brand: 'Kinh Đô',
+    sku: 'AM-2026-01',
+    label: 'Bán chạy',
+    weight: '4 bánh · 720g',
+    ingredients: 'Hạt sen · trứng muối',
+    description: 'Hộp quà có nhiều màu để khách lựa chọn.',
+    details: 'Chọn màu phù hợp trước khi thêm vào giỏ hàng.',
+    image: 'https://example.com/mooncake.jpg',
+    variantLabel: 'Màu sắc',
+    variants: [
+      {name:'Đỏ', sku:'AM-2026-01-RED', price:350000},
+      {name:'Xanh', sku:'AM-2026-01-BLUE', price:360000},
+      {name:'Vàng', sku:'AM-2026-01-YELLOW', price:350000}
+    ]
+  };
+  const example = worksheetFromRows(productWorkbookHeaders, productWorkbookRows([exampleProduct]), productWorkbookWidths);
+  example['!freeze'] = {xSplit: 0, ySplit: 1};
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Danh mục');
-  XLSX.utils.book_append_sheet(workbook, guide, 'Hướng dẫn');
+  XLSX.utils.book_append_sheet(workbook, example, 'Ví dụ');
+  XLSX.utils.book_append_sheet(workbook, productWorkbookGuide(), 'Hướng dẫn');
+  return XLSX.write(workbook, {type: 'buffer', bookType: 'xlsx', compression: true});
+}
+
+function productCatalogWorkbook(state) {
+  const products = Array.isArray(state['aeon-products']) ? state['aeon-products'] : [];
+  const worksheet = worksheetFromRows(productWorkbookHeaders, productWorkbookRows(products), productWorkbookWidths);
+  worksheet['!freeze'] = {xSplit: 0, ySplit: 1};
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Danh mục');
+  XLSX.utils.book_append_sheet(workbook, productWorkbookGuide(), 'Hướng dẫn');
   return XLSX.write(workbook, {type: 'buffer', bookType: 'xlsx', compression: true});
 }
 
@@ -519,6 +667,7 @@ function googleSheetOrderPayload(input = {}) {
 }
 
 async function sendOrderToGoogleSheet(payload) {
+  if (!googleSheetWebAppUrl) throw new Error('Máy chủ chưa cấu hình GOOGLE_SHEET_WEB_APP_URL.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
@@ -566,8 +715,42 @@ http.createServer(async (request, response) => {
   try { pathname = decodeURIComponent(new URL(request.url, `http://${request.headers.host}`).pathname); }
   catch { response.writeHead(400); return response.end('Bad request'); }
 
+  if (request.method === 'GET' && pathname === '/api/admin/session') {
+    return json(response, 200, {authenticated:isAdminRequest(request), configured:configuredAdmin()});
+  }
+  if (request.method === 'POST' && pathname === '/api/admin/login') {
+    if (!configuredAdmin()) return json(response, 503, {error:'Máy chủ chưa cấu hình ADMIN_USERNAME và ADMIN_PASSWORD.'});
+    try {
+      const {username, password} = JSON.parse((await readBody(request, 32 * 1024)).toString('utf8'));
+      if (!secureTextEqual(String(username || '').trim(), adminUsername) || !secureTextEqual(password, adminPassword)) {
+        return json(response, 401, {error:'Tài khoản hoặc mật khẩu chưa đúng.'});
+      }
+      const token = crypto.randomBytes(32).toString('base64url');
+      adminSessions.set(token, Date.now() + adminSessionTtlSeconds * 1000);
+      response.writeHead(200, {
+        'Content-Type':'application/json; charset=utf-8',
+        'Cache-Control':'no-store',
+        'Set-Cookie':adminCookie(request, token)
+      });
+      return response.end(JSON.stringify({ok:true}));
+    } catch (error) {
+      return json(response, 400, {error:error.message || 'Không thể đăng nhập.'});
+    }
+  }
+  if (request.method === 'POST' && pathname === '/api/admin/logout') {
+    const token = adminSessionToken(request);
+    if (token) adminSessions.delete(token);
+    response.writeHead(200, {
+      'Content-Type':'application/json; charset=utf-8',
+      'Cache-Control':'no-store',
+      'Set-Cookie':adminCookie(request, '', 0)
+    });
+    return response.end(JSON.stringify({ok:true}));
+  }
+
   if (request.method === 'GET' && pathname === '/api/state') return json(response, 200, readState());
   if (request.method === 'GET' && pathname === '/api/export/customers.xlsx') {
+    if (!requireAdmin(request, response)) return;
     try {
       const workbook = customerWorkbook(readState());
       response.writeHead(200, {
@@ -583,6 +766,7 @@ http.createServer(async (request, response) => {
   }
   const orderPdfMatch = request.method === 'GET' ? /^\/api\/orders\/([^/]+)\.pdf$/i.exec(pathname) : null;
   if (orderPdfMatch) {
+    if (!requireAdmin(request, response)) return;
     try {
       const orderCode = orderPdfMatch[1];
       const pdf = await orderPdfBuffer(readState(), orderCode);
@@ -612,11 +796,26 @@ http.createServer(async (request, response) => {
       return json(response, 500, {error: error.message || 'Không thể tạo mẫu Excel.'});
     }
   }
+  if (request.method === 'GET' && pathname === '/api/export/products.xlsx') {
+    try {
+      const workbook = productCatalogWorkbook(readState());
+      response.writeHead(200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': "attachment; filename=\"product-list.xlsx\"; filename*=UTF-8''danh-sach-san-pham-hien-tai.xlsx",
+        'Content-Length': workbook.length,
+        'Cache-Control': 'no-store'
+      });
+      return response.end(workbook);
+    } catch (error) {
+      return json(response, 500, {error: error.message || 'Không thể tạo danh sách sản phẩm Excel.'});
+    }
+  }
   if (request.method === 'POST' && pathname === '/api/state') {
     try {
       const {key, value} = JSON.parse((await readBody(request)).toString('utf8'));
-      const allowedKeys = new Set(['aeon-products','aeon-ui','aeon-layout','aeon-customers','aeon-orders']);
+      const allowedKeys = new Set(['aeon-products','aeon-ui','aeon-layout','aeon-brands','aeon-customers','aeon-orders']);
       if (!allowedKeys.has(key)) return json(response, 400, {error:'Không thể lưu loại dữ liệu này.'});
+      if (!['aeon-customers','aeon-orders'].includes(key) && !requireAdmin(request, response)) return;
       const state = readState(); state[key] = value; writeState(state); return json(response, 200, {ok:true});
     } catch (error) { return json(response, 400, {error:error.message || 'Không thể lưu dữ liệu.'}); }
   }
@@ -633,6 +832,7 @@ http.createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && pathname === '/api/upload') {
+    if (!requireAdmin(request, response)) return;
     try {
       const body = JSON.parse((await readBody(request)).toString('utf8'));
       const match = /^data:(image\/(?:png|jpeg|webp|gif)|image\/svg\+xml);base64,([A-Za-z0-9+/=]+)$/.exec(body.dataUrl || '');
@@ -649,6 +849,7 @@ http.createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && pathname === '/api/upload-quote') {
+    if (!requireAdmin(request, response)) return;
     try {
       const body = JSON.parse((await readBody(request, maxQuoteUploadBytes)).toString('utf8'));
       const filename = path.basename(String(body.filename || 'bao-gia'));
@@ -670,6 +871,7 @@ http.createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && pathname === '/api/import-products') {
+    if (!requireAdmin(request, response)) return;
     try {
       const body = JSON.parse((await readBody(request, maxImportBytes)).toString('utf8'));
       const filename = path.basename(String(body.filename || 'catalogue'));
