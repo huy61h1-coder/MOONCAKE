@@ -19,6 +19,18 @@ function normaliseImageUrl(value) {
   return `/${url.replace(/^\.?\//, '')}`;
 }
 
+function normaliseQuoteFileUrl(value, kind) {
+  const url = normaliseImageUrl(value);
+  if (!url) return '';
+  try {
+    const pathname = new URL(url, location.origin).pathname.toLowerCase();
+    const matches = kind === 'pdf' ? pathname.endsWith('.pdf') : /\.(xlsx|xls)$/.test(pathname);
+    return matches ? url : '';
+  } catch {
+    return '';
+  }
+}
+
 function normaliseVariants(value, fallbackPrice) {
   if (!Array.isArray(value)) return [];
   return value.map((variant, index) => {
@@ -48,8 +60,21 @@ function normaliseProduct(product) {
     weight: String(product.weight || ''),
     ingredients: String(product.ingredients || ''),
     sku: String(product.sku || ''),
+    variantLabel: String(product.variantLabel || '').trim().slice(0, 100),
     variants: normaliseVariants(product.variants, price)
   };
+}
+
+function storefrontProductInsertPositionOptions(items, selectedPosition = items.length) {
+  if (!items.length) return '<option value="0" selected>1 — Vị trí đầu tiên</option>';
+  return Array.from({length: items.length + 1}, (_, index) => {
+    const label = index === 0
+      ? '1 — Đầu danh sách'
+      : index === items.length
+        ? `${index + 1} — Cuối danh sách`
+        : `${index + 1} — Sau “${items[index - 1].name || 'Sản phẩm chưa đặt tên'}”`;
+    return `<option value="${index}"${index === selectedPosition ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
 }
 
 function priceLabel(product) {
@@ -107,11 +132,18 @@ function promotionFor(subtotal, date = new Date()) {
 const grid = $('#productGrid');
 const cartItems = $('#cartItems');
 const brandDirectory = $('#brandDirectory');
+const productSearchForm = $('#topProductSearch');
+const productSearchInput = $('#productSearchInput');
+const clearProductSearch = $('#clearProductSearch');
+const productSort = $('#productSort');
+const catalogResult = $('#catalogResult');
 let activeBrand = '';
+let productSearchQuery = '';
+let productSortValue = 'featured';
 
 $('#openCart').innerHTML = '<svg class="cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L20 8H7.1"></path><circle cx="10" cy="20" r="1"></circle><circle cx="17" cy="20" r="1"></circle></svg><span>Giỏ hàng</span><b id="cartCount">0</b>';
 $('.drawer-head h2').textContent = 'Giỏ hàng';
-$('.hero .note').textContent = 'Hình ảnh, sản phẩm và giá bán được cập nhật theo thông tin chính thức.';
+$('.hero .note')?.remove();
 $('#checkout .note').textContent = 'Chúng tôi sẽ liên hệ xác nhận đơn hàng, ưu đãi và thời gian giao phù hợp.';
 $('.cart-total small').textContent = 'Phí giao hàng và ưu đãi sẽ được xác nhận khi tư vấn.';
 $('footer p').textContent = '© 2026 AEON Mooncake.';
@@ -119,20 +151,64 @@ $('footer p').textContent = '© 2026 AEON Mooncake.';
 document.body.insertAdjacentHTML('beforeend', '<button class="mobile-cart-cta" id="mobileCart" aria-label="Mở giỏ hàng"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L20 8H7.1"></path><circle cx="10" cy="20" r="1"></circle><circle cx="17" cy="20" r="1"></circle></svg><span>Giỏ hàng</span><b id="mobileCartCount">0</b><i>Xem giỏ →</i></button>');
 $('.site-header nav').insertAdjacentHTML('beforeend', '<a href="admin.html">Quản trị</a>');
 
-['product-detail.css', 'hotline.css', 'promotion.css', 'hero-promotion.css', 'catalog-focus.css', 'hero-compact.css', 'admin-layout.css', 'storefront-refine.css', 'mobile-storefront.css', 'official-assets.css', 'product-modal-fix.css', 'product-variants.css', 'storefront-product-ux.css', 'brand-directory.css', 'storefront-admin.css'].forEach(href => {
+['product-detail.css', 'hotline.css?v=20260804-contact', 'promotion.css', 'hero-promotion.css', 'catalog-focus.css', 'hero-compact.css', 'admin-layout.css', 'storefront-refine.css', 'mobile-storefront.css', 'official-assets.css', 'product-modal-fix.css', 'product-variants.css', 'storefront-product-ux.css', 'brand-directory.css', 'storefront-admin.css', 'theme-customization.css', 'quote-download.css', 'catalog-search-sort.css?v=20260804-search-sort'].forEach(href => {
   document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href}));
 });
 
-document.body.insertAdjacentHTML('beforeend', '<aside class="hotline-widget" aria-label="Tư vấn đặt hàng"><a class="hotline-call" href="tel:0327747337"><span>Hotline tư vấn</span><b>0327 747 337</b></a><a class="zalo-link" href="https://zalo.me/0327747337" target="_blank" rel="noopener noreferrer" aria-label="Nhắn Zalo 0327747337">Zalo</a></aside>');
-$('footer').insertAdjacentHTML('beforeend', '<a class="footer-hotline" href="https://zalo.me/0327747337" target="_blank" rel="noopener noreferrer">Tư vấn: 0327 747 337 · Zalo ↗</a>');
+document.body.insertAdjacentHTML('beforeend', '<aside class="hotline-widget" aria-label="Liên hệ tư vấn"><a class="hotline-call contact-button" href="tel:0327747337" aria-label="Gọi hotline 0327 747 337"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.5 9.6 8 7.9 9.7c1.1 2.3 2.9 4.1 5.2 5.2l1.7-1.7 4.5 2.4-.9 3.8c-.2.8-.9 1.3-1.7 1.3C9.2 20.7 3.3 14.8 3.3 7.3c0-.8.5-1.5 1.3-1.7l2.6-.6Z"></path></svg><span><small>Hotline</small><b>0327 747 337</b></span></a><a class="zalo-link contact-button" href="https://zalo.me/0327747337" target="_blank" rel="noopener noreferrer" aria-label="Nhắn tin qua Zalo"><span>Chat</span><b>Zalo</b></a></aside>');
+$('footer').insertAdjacentHTML('beforeend', '<div class="footer-contact-actions" aria-label="Thông tin liên hệ"><a class="footer-hotline footer-contact-button" href="tel:0327747337">Hotline: 0327 747 337</a><a class="footer-zalo footer-contact-button" href="https://zalo.me/0327747337" target="_blank" rel="noopener noreferrer">Nhắn Zalo ↗</a></div>');
 
 $('.benefits').insertAdjacentHTML('afterend', '<section class="promotion-section" id="promotion"><div><p class="eyebrow">ƯU ĐÃI MÙA TRĂNG 2026</p><h2>Ưu đãi càng lớn,<br><em>quà tặng càng trọn.</em></h2><p>Áp dụng theo giá trị hóa đơn trong thời gian chương trình.</p></div><div class="promotion-list"><article><span>03/08 — 19/08</span><h3>Ưu đãi sớm</h3><strong>Giảm 8%</strong><p>Cho hóa đơn từ 1.000.000 ₫</p></article><article><span>20/08 — 25/09</span><h3>Chiết khấu chính thức</h3><p><b>5%</b> từ 3 triệu · <b>10%</b> từ 10 triệu<br><b>12%</b> từ 15 triệu · <b>15%</b> từ 30 triệu</p></article></div><small>Không áp dụng đồng thời ưu đãi thành viên 5% vào ngày 5 & 20 hằng tháng. Phiếu ưu đãi áp dụng cho giỏ quà không rượu.</small></section>');
 
 const compactPromotion = $('#promotion');
 const heroCopy = $('.hero-copy');
 compactPromotion.className = 'hero-promotion';
-compactPromotion.innerHTML = '<span>Ưu đãi mùa trăng</span><p><b>03–19/08: giảm 8%</b> từ 1 triệu &nbsp;·&nbsp; <b>20/08–25/09: giảm 5–15%</b> từ 3 triệu</p>';
-heroCopy.insertBefore(compactPromotion, heroCopy.querySelector('.note'));
+compactPromotion.innerHTML = '<span data-promotion-title></span><p data-promotion-text></p>';
+heroCopy.querySelector('.hero-actions').append(compactPromotion);
+
+const quoteDownload = $('#quoteDownload');
+const quoteDownloadTrigger = $('#quoteDownloadTrigger');
+const quoteDownloadMenu = $('#quoteDownloadMenu');
+
+function closeQuoteDownloadMenu() {
+  quoteDownloadMenu.hidden = true;
+  quoteDownloadTrigger.setAttribute('aria-expanded', 'false');
+}
+
+function renderQuoteDownload(ui) {
+  const files = [
+    {kind:'excel', label:'Tải file Excel', meta:'.XLSX / .XLS', url:normaliseQuoteFileUrl(ui.quoteExcelUrl, 'excel')},
+    {kind:'pdf', label:'Tải file PDF', meta:'.PDF', url:normaliseQuoteFileUrl(ui.quotePdfUrl, 'pdf')}
+  ];
+  const availableCount = files.filter(file => file.url).length;
+
+  quoteDownloadMenu.innerHTML = files.map(file => file.url
+    ? `<a class="quote-download-option" href="${escapeHtml(file.url)}" download data-quote-kind="${file.kind}"><b>${file.label}</b><span>${file.meta}</span></a>`
+    : `<span class="quote-download-option is-disabled" aria-disabled="true"><b>${file.label}</b><span>Chưa tải lên</span></span>`).join('');
+  quoteDownloadTrigger.disabled = availableCount === 0;
+  quoteDownloadTrigger.setAttribute('aria-label', availableCount ? `Chọn định dạng file báo giá, có ${availableCount} tệp sẵn sàng` : 'Chưa có file báo giá để tải xuống');
+  if (!availableCount) closeQuoteDownloadMenu();
+}
+
+quoteDownloadTrigger.addEventListener('click', event => {
+  event.stopPropagation();
+  if (quoteDownloadTrigger.disabled) return;
+  const willOpen = quoteDownloadMenu.hidden;
+  quoteDownloadMenu.hidden = !willOpen;
+  quoteDownloadTrigger.setAttribute('aria-expanded', String(willOpen));
+});
+quoteDownloadMenu.addEventListener('click', event => {
+  if (event.target.closest('a')) closeQuoteDownloadMenu();
+});
+document.addEventListener('click', event => {
+  if (!quoteDownload.contains(event.target)) closeQuoteDownloadMenu();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !quoteDownloadMenu.hidden) {
+    closeQuoteDownloadMenu();
+    quoteDownloadTrigger.focus();
+  }
+});
 
 $('.cart-total').insertAdjacentHTML('beforeend', '<p id="cartPromotion" class="cart-promotion"></p>');
 $('#orderForm').insertAdjacentHTML('afterbegin', '<section class="checkout-summary" id="checkoutSummary" aria-live="polite"></section>');
@@ -151,9 +227,7 @@ mainNav[1].href = '#promotion';
 mainNav[1].textContent = 'Ưu đãi';
 mainNav[2].href = '#checkout';
 mainNav[2].textContent = 'Đặt hàng';
-const heroSecondaryLink = $('.hero-actions .text-link');
-heroSecondaryLink.href = '#promotion';
-heroSecondaryLink.textContent = 'Xem ưu đãi';
+$('.hero-actions .text-link')?.remove();
 
 function renderStorefrontAdminTools() {
   const active = isStorefrontAdmin();
@@ -170,8 +244,132 @@ function renderStorefrontAdminTools() {
   if (!toolbarAnchor) return;
   toolbarAnchor.insertAdjacentHTML('beforebegin', `<div class="storefront-admin-toolbar" id="storefrontAdminToolbar" aria-label="Chế độ quản trị sản phẩm">
     <div><span class="storefront-admin-status">● Chế độ quản trị</span><small>Bạn đang chỉnh sửa trực tiếp trên trang bán hàng.</small></div>
-    <div class="storefront-admin-toolbar-actions"><button type="button" data-storefront-new>+ Thêm sản phẩm</button><a href="admin.html">Quản trị đầy đủ</a><button type="button" class="storefront-admin-logout" data-storefront-logout>Đăng xuất</button></div>
+    <div class="storefront-admin-toolbar-actions"><button type="button" data-storefront-new>+ Thêm sản phẩm</button><button type="button" data-storefront-appearance>Tùy chỉnh giao diện</button><a href="admin.html">Quản trị đầy đủ</a><button type="button" class="storefront-admin-logout" data-storefront-logout>Đăng xuất</button></div>
   </div>`);
+}
+
+function formatBannerRatio(value) {
+  const ratio = Number(value) || AEON_DEFAULT_LAYOUT.bannerAspectRatio;
+  return `${ratio.toFixed(2).replace(/\.?0+$/, '')}:1`;
+}
+
+function appearanceRangeMarkup(name, label, value, min, max, step = 1, autoLabel = '', outputFormat = 'px') {
+  const numeric = Number(value) || 0;
+  const output = outputFormat === 'ratio'
+    ? formatBannerRatio(numeric)
+    : (numeric === 0 && autoLabel ? autoLabel : `${numeric}px`);
+  return `<label>${label}<output data-appearance-output="${name}">${output}</output><input class="layout-range" type="range" name="${name}" min="${min}" max="${max}" step="${step}" value="${numeric}"${autoLabel ? ` data-auto-label="${autoLabel}"` : ''}${outputFormat === 'ratio' ? ' data-output-format="ratio"' : ''}></label>`;
+}
+
+function storefrontAppearanceValues(form, base = aeonStore.layout()) {
+  const values = Object.fromEntries(new FormData(form));
+  ['heroTitleSize', 'heroIntroSize', 'bannerAspectRatio', 'productTitleSize', 'headerHeight', 'heroHeight', 'sectionSpacing', 'productImageHeight', 'productColumns', 'logoSize'].forEach(key => {
+    values[key] = Number(values[key]);
+  });
+  return {...base, ...values};
+}
+
+function closeStorefrontAppearance(restore = true) {
+  const modal = $('#storefrontAppearanceEditor');
+  if (!modal) return false;
+  modal.remove();
+  document.body.classList.remove('storefront-appearance-editor-open');
+  if (restore) applyLayout();
+  return true;
+}
+
+function openStorefrontAppearance() {
+  if (!isStorefrontAdmin()) return;
+  const existing = $('#storefrontAppearanceEditor');
+  if (existing) {
+    existing.querySelector('input, select, button')?.focus();
+    return;
+  }
+
+  const layout = aeonStore.layout();
+  document.body.insertAdjacentHTML('beforeend', `<section class="storefront-appearance-editor show" id="storefrontAppearanceEditor" role="dialog" aria-modal="true" aria-labelledby="storefrontAppearanceTitle">
+    <div class="storefront-appearance-card">
+      <button class="storefront-appearance-close" type="button" data-storefront-appearance-close aria-label="Đóng tùy chỉnh giao diện">×</button>
+      <header><p class="eyebrow">CHỈNH SỬA TRỰC TIẾP</p><h2 id="storefrontAppearanceTitle">Tùy chỉnh giao diện</h2><p>Điều chỉnh màu và kích thước, xem kết quả ngay trên trang này rồi lưu để đồng bộ với phần Cài đặt.</p></header>
+      <form id="storefrontAppearanceForm">
+        <section class="storefront-appearance-section"><h3>Màu sắc</h3><div class="storefront-appearance-grid">
+          <label>Màu chủ đạo<input name="accentColor" type="color" value="${layout.accentColor}"></label>
+          <label>Màu chủ đạo đậm<input name="accentDarkColor" type="color" value="${layout.accentDarkColor}"></label>
+          <label>Màu nền trang<input name="pageBackgroundColor" type="color" value="${layout.pageBackgroundColor}"></label>
+          <label>Màu nền khu vực nội dung<input name="sectionBackgroundColor" type="color" value="${layout.sectionBackgroundColor}"></label>
+          <label>Màu chữ chính<input name="textColor" type="color" value="${layout.textColor}"></label>
+        </div></section>
+        <section class="storefront-appearance-section"><h3>Chữ và khu vực</h3><div class="storefront-appearance-grid">
+          ${appearanceRangeMarkup('heroTitleSize', 'Cỡ tiêu đề hero', layout.heroTitleSize, 10, 90)}
+          ${appearanceRangeMarkup('heroIntroSize', 'Cỡ mô tả hero', layout.heroIntroSize, 12, 22)}
+          ${appearanceRangeMarkup('bannerAspectRatio', 'Tỷ lệ banner desktop (chỉ đổi chiều ngang)', layout.bannerAspectRatio, 1.5, 4, 'any', '', 'ratio')}
+          ${appearanceRangeMarkup('productTitleSize', 'Cỡ tên sản phẩm', layout.productTitleSize, 12, 24)}
+          ${appearanceRangeMarkup('headerHeight', 'Chiều cao thanh đầu trang', layout.headerHeight, 10, 112)}
+          ${appearanceRangeMarkup('heroHeight', 'Chiều cao hero', layout.heroHeight, 0, 700, 10, 'Tự động')}
+          ${appearanceRangeMarkup('sectionSpacing', 'Khoảng cách đầu/cuối khu vực', layout.sectionSpacing, 0, 170, 5, 'Tự động')}
+          ${appearanceRangeMarkup('productImageHeight', 'Chiều cao ảnh sản phẩm', layout.productImageHeight, 0, 480, 10, 'Tự động')}
+          ${appearanceRangeMarkup('logoSize', 'Cỡ logo', layout.logoSize, 18, 48)}
+          <label>Số cột sản phẩm trên desktop<select name="productColumns"><option value="0"${Number(layout.productColumns) === 0 ? ' selected' : ''}>Tự động</option><option value="2"${Number(layout.productColumns) === 2 ? ' selected' : ''}>2 cột</option><option value="3"${Number(layout.productColumns) === 3 ? ' selected' : ''}>3 cột</option><option value="4"${Number(layout.productColumns) === 4 ? ' selected' : ''}>4 cột</option></select></label>
+        </div></section>
+        <p class="storefront-appearance-status" id="storefrontAppearanceStatus" role="status"></p>
+        <footer><button class="danger" type="button" data-storefront-appearance-reset>Khôi phục mặc định</button><span></span><button class="storefront-appearance-cancel" type="button" data-storefront-appearance-close>Hủy</button><button class="button primary" type="submit">Lưu thay đổi</button></footer>
+      </form>
+    </div>
+  </section>`);
+  document.body.classList.add('storefront-appearance-editor-open');
+
+  const modal = $('#storefrontAppearanceEditor');
+  const form = $('#storefrontAppearanceForm');
+  const status = $('#storefrontAppearanceStatus');
+  const preview = () => applyLayout(storefrontAppearanceValues(form));
+  form.querySelectorAll('input, select').forEach(input => {
+    input.addEventListener('input', () => {
+      const output = form.querySelector(`[data-appearance-output="${input.name}"]`);
+      if (output) {
+        output.textContent = input.dataset.outputFormat === 'ratio'
+          ? formatBannerRatio(input.value)
+          : (Number(input.value) === 0 && input.dataset.autoLabel ? input.dataset.autoLabel : `${input.value}px`);
+      }
+      preview();
+    });
+    input.addEventListener('change', preview);
+  });
+  modal.querySelectorAll('[data-storefront-appearance-close]').forEach(button => {
+    button.onclick = () => closeStorefrontAppearance(true);
+  });
+  modal.onclick = event => {
+    if (event.target === modal) closeStorefrontAppearance(true);
+  };
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const button = form.querySelector('[type="submit"]');
+    const values = storefrontAppearanceValues(form);
+    button.disabled = true;
+    button.textContent = 'Đang lưu...';
+    try {
+      const synced = await aeonStore.set('aeon-layout', values);
+      refreshStorefront();
+      closeStorefrontAppearance(false);
+      toast(synced ? 'Đã lưu giao diện và đồng bộ website.' : 'Đã lưu giao diện trên trình duyệt này.');
+    } catch (error) {
+      status.textContent = error.message || 'Không thể lưu giao diện.';
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Lưu thay đổi';
+    }
+  };
+  modal.querySelector('[data-storefront-appearance-reset]').onclick = async () => {
+    if (!confirm('Khôi phục toàn bộ màu sắc và kích thước về mặc định?')) return;
+    try {
+      const synced = await aeonStore.set('aeon-layout', AEON_DEFAULT_LAYOUT);
+      refreshStorefront();
+      closeStorefrontAppearance(false);
+      toast(synced ? 'Đã khôi phục giao diện mặc định.' : 'Đã khôi phục giao diện trên trình duyệt này.');
+    } catch (error) {
+      status.textContent = error.message || 'Không thể khôi phục giao diện.';
+    }
+  };
+  form.querySelector('input')?.focus();
 }
 
 function storefrontProductAdminActions(product) {
@@ -270,8 +468,27 @@ function renderStorefrontEditorPreview(preview, value, name = 'Ảnh sản phẩ
   attachImageFallbacks(preview);
 }
 
+function readStorefrontImageAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Không thể đọc ảnh đã chọn.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function uploadStorefrontProductImage(file) {
-  return window.uploadAeonImage(file);
+  if (!file) throw new Error('Hãy chọn ảnh trước khi tải lên.');
+  if (!/^image\/(png|jpeg|webp|gif|svg\+xml)$/i.test(file.type)) throw new Error('Chỉ hỗ trợ ảnh PNG, JPG, WEBP, GIF hoặc SVG.');
+  if (file.size > 10 * 1024 * 1024) throw new Error('Ảnh phải nhỏ hơn hoặc bằng 10 MB.');
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: file.name, dataUrl: await readStorefrontImageAsDataUrl(file)})
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Không thể tải ảnh lên.');
+  return normaliseImageUrl(result.url);
 }
 
 function productFromStorefrontForm(form, existing = {}, variants = []) {
@@ -307,9 +524,15 @@ async function saveStorefrontProduct(form, existing, getVariants) {
   if (existing.id && position < 0) throw new Error('Sản phẩm đã thay đổi ở phiên khác. Hãy tải lại trang trước khi lưu.');
   const stored = position >= 0 ? all[position] : {};
   const product = productFromStorefrontForm(form, stored, getVariants());
+  const requestedPosition = Number(form.elements.insertPosition?.value);
   product.id = stored.id || existing.id || `sp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   if (position >= 0) all[position] = product;
-  else all.push(product);
+  else {
+    const insertAt = Number.isInteger(requestedPosition)
+      ? Math.max(0, Math.min(requestedPosition, all.length))
+      : all.length;
+    all.splice(insertAt, 0, product);
+  }
 
   const saved = await aeonStore.set('aeon-products', all);
   if (!saved) {
@@ -357,6 +580,7 @@ function openStorefrontProductEditor(id) {
       <div class="storefront-admin-form-grid">
         <label>Tên sản phẩm<input name="name" required value="${escapeHtml(existing.name)}"></label>
         <label>Thương hiệu<select name="brand">${aeonBrandOptions(existing.brand)}</select></label>
+        ${existing.id ? '' : `<label>Vị trí trong danh sách<select name="insertPosition">${storefrontProductInsertPositionOptions(aeonStore.products())}</select><small>Sản phẩm sẽ được chèn đúng vị trí này khi lưu.</small></label>`}
         <label>Giá bán (VNĐ)<small data-variant-price-hint></small><input name="price" type="number" min="0" inputmode="numeric" required value="${existing.price ?? ''}" placeholder="Ví dụ: 750000"${existing.variants?.length ? ' readonly' : ''}></label>
         <label>Nhãn hiển thị<input name="label" value="${escapeHtml(existing.label || '')}" placeholder="Ví dụ: Bán chạy"></label>
         <label>Quy cách / khối lượng<input name="weight" value="${escapeHtml(existing.weight || '')}" placeholder="Ví dụ: 4 bánh · 720g"></label>
@@ -365,8 +589,8 @@ function openStorefrontProductEditor(id) {
         <label>Thành phần nổi bật<input name="ingredients" value="${escapeHtml(existing.ingredients || '')}"></label>
         <label>Mã sản phẩm<input name="sku" value="${escapeHtml(existing.sku || '')}"></label>
         <fieldset class="product-variant-editor wide"><legend>Lựa chọn sản phẩm</legend><p>Một hình có thể đại diện nhiều loại hàng. Khách sẽ chọn loại trước khi thêm vào giỏ.</p><div class="product-variant-rows" data-variant-rows>${(existing.variants || []).map(storefrontVariantRowMarkup).join('')}</div><button type="button" data-add-variant>+ Thêm lựa chọn</button></fieldset>
-        <label class="wide">Đường dẫn ảnh<input name="image" value="${escapeHtml(existing.image || '')}" placeholder="https://... hoặc assets/uploads/..."></label>
-        <label class="storefront-admin-upload wide">Tải ảnh từ máy<input data-storefront-image-file type="file" accept="image/png,image/jpeg,image/webp,image/gif"><button type="button" data-storefront-image-upload>Tải ảnh lên</button></label>
+        <label class="wide">Đường dẫn ảnh<input name="image" value="${escapeHtml(existing.image || '')}" placeholder="https://... hoặc /assets/uploads/ten-anh.png"></label>
+        <div class="storefront-admin-upload wide"><label for="storefrontProductImageFile">Tải ảnh từ máy (PNG, JPG, WEBP, GIF hoặc SVG)</label><input id="storefrontProductImageFile" data-storefront-image-file type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg"><button type="button" data-storefront-image-upload>Tải ảnh lên</button></div>
         <label>Màu nền khi chưa có ảnh<input name="bg" type="color" value="${safeColor(existing.bg, '#e9c38b')}"></label>
         <label>Màu hộp khi chưa có ảnh<input name="box" type="color" value="${safeColor(existing.box, '#8f1834')}"></label>
       </div>
@@ -457,10 +681,14 @@ async function deleteStorefrontProduct(id) {
 
 function applyUi() {
   const ui = aeonStore.ui();
+  renderAeonBrandLogos(ui);
   const hero = $('.hero-copy');
   hero.querySelector('.eyebrow').textContent = ui.eyebrow;
   hero.querySelector('h1').innerHTML = String(ui.title).split('\n').map((text, index) => index ? `<em>${escapeHtml(text)}</em>` : escapeHtml(text)).join('<br>');
   hero.querySelector('.intro').textContent = ui.intro;
+  $('.hero-promotion [data-promotion-title]').textContent = ui.promotionTitle;
+  $('.hero-promotion [data-promotion-text]').textContent = ui.promotionText;
+  renderQuoteDownload(ui);
 
   const art = $('.hero-art');
   art.querySelector('img')?.remove();
@@ -475,13 +703,54 @@ function applyUi() {
   attachImageFallbacks(official);
 }
 
-function applyLayout() {
-  const layout = aeonStore.layout();
+function safeThemeColor(value, fallback) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+}
+
+function layoutNumber(value, min, max, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function applyLayout(nextLayout = aeonStore.layout()) {
+  const layout = {...AEON_DEFAULT_LAYOUT, ...nextLayout};
+  const root = document.documentElement;
+  const accent = safeThemeColor(layout.accentColor, AEON_DEFAULT_LAYOUT.accentColor);
+  const accentDark = safeThemeColor(layout.accentDarkColor, AEON_DEFAULT_LAYOUT.accentDarkColor);
+  root.style.setProperty('--red', accent);
+  root.style.setProperty('--wine', accentDark);
+  root.style.setProperty('--cream', safeThemeColor(layout.pageBackgroundColor, AEON_DEFAULT_LAYOUT.pageBackgroundColor));
+  root.style.setProperty('--paper', safeThemeColor(layout.sectionBackgroundColor, AEON_DEFAULT_LAYOUT.sectionBackgroundColor));
+  root.style.setProperty('--ink', safeThemeColor(layout.textColor, AEON_DEFAULT_LAYOUT.textColor));
+
+  const headerHeight = layoutNumber(layout.headerHeight, 10, 112, AEON_DEFAULT_LAYOUT.headerHeight);
+  const heroHeight = layoutNumber(layout.heroHeight, 0, 700, 0);
+  const sectionSpacing = layoutNumber(layout.sectionSpacing, 0, 170, 0);
+  const productImageHeight = layoutNumber(layout.productImageHeight, 0, 480, 0);
+  const productColumns = layoutNumber(layout.productColumns, 0, 4, 0);
+  const logoSize = layoutNumber(layout.logoSize, 18, 48, AEON_DEFAULT_LAYOUT.logoSize);
+  const bannerAspectRatio = layoutNumber(layout.bannerAspectRatio, 1.5, 4, AEON_DEFAULT_LAYOUT.bannerAspectRatio);
+  const bannerWidthScale = bannerAspectRatio / AEON_DEFAULT_LAYOUT.bannerAspectRatio;
+  root.style.setProperty('--admin-header-height', `${headerHeight}px`);
+  root.style.setProperty('--admin-hero-height', `${heroHeight}px`);
+  root.style.setProperty('--admin-section-spacing', `${sectionSpacing}px`);
+  root.style.setProperty('--admin-product-media-height', `${productImageHeight}px`);
+  root.style.setProperty('--admin-logo-size', `${logoSize}px`);
+  root.style.setProperty('--admin-banner-ratio', String(bannerAspectRatio));
+  root.style.setProperty('--admin-banner-width-desktop', `${520 * bannerWidthScale}px`);
+  root.style.setProperty('--admin-banner-width-mobile', '100%');
+  document.body.classList.toggle('has-custom-hero-height', heroHeight > 0);
+  document.body.classList.toggle('has-custom-section-spacing', sectionSpacing > 0);
+  document.body.classList.toggle('has-custom-product-media', productImageHeight > 0);
+  document.body.classList.toggle('has-custom-product-columns', [2, 3, 4].includes(productColumns));
+  grid.dataset.layoutColumns = [2, 3, 4].includes(productColumns) ? String(productColumns) : '';
+
   const hero = $('.hero');
-  hero.style.setProperty('--admin-hero-title-size', `${Math.min(Math.max(Number(layout.heroTitleSize) || 68, 42), 76)}px`);
-  hero.style.setProperty('--admin-hero-intro-size', `${Math.min(Math.max(Number(layout.heroIntroSize) || 15, 12), 22)}px`);
+  hero.style.setProperty('--admin-hero-title-size', `${layoutNumber(layout.heroTitleSize, 10, 90, AEON_DEFAULT_LAYOUT.heroTitleSize)}px`);
+  hero.style.setProperty('--admin-hero-intro-size', `${layoutNumber(layout.heroIntroSize, 12, 22, AEON_DEFAULT_LAYOUT.heroIntroSize)}px`);
   hero.querySelector('.hero-actions').dataset.buttonAlign = layout.heroButtonAlign;
-  grid.style.setProperty('--admin-product-title-size', `${Math.min(Math.max(Number(layout.productTitleSize) || 15, 12), 24)}px`);
+  grid.style.setProperty('--admin-product-title-size', `${layoutNumber(layout.productTitleSize, 12, 24, AEON_DEFAULT_LAYOUT.productTitleSize)}px`);
   grid.dataset.buttonAlign = layout.productButtonAlign;
   $('.checkout form').dataset.buttonAlign = layout.checkoutButtonAlign;
 }
@@ -502,6 +771,71 @@ function attachImageFallbacks(scope = document) {
   });
 }
 
+function normaliseCatalogText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase()
+    .trim();
+}
+
+function catalogProductText(product) {
+  return normaliseCatalogText([
+    product.name,
+    product.brand,
+    product.label,
+    product.sku,
+    product.description,
+    product.variantLabel,
+    ...product.variants.flatMap(variant => [variant.name, variant.sku])
+  ].join(' '));
+}
+
+function catalogProductPrice(product) {
+  const variantPrices = product.variants.map(variant => variant.price).filter(price => price > 0);
+  if (variantPrices.length) return Math.min(...variantPrices);
+  return product.price > 0 ? product.price : 0;
+}
+
+function sortCatalogProducts(items) {
+  const sorted = [...items];
+  const collator = new Intl.Collator('vi', {sensitivity:'base', numeric:true});
+  const [field, direction = 'asc'] = productSortValue.split('-');
+  const order = direction === 'desc' ? -1 : 1;
+
+  if (field === 'name') {
+    sorted.sort((first, second) => order * collator.compare(first.name, second.name));
+  } else if (field === 'brand') {
+    sorted.sort((first, second) => {
+      if (!first.brand && second.brand) return 1;
+      if (first.brand && !second.brand) return -1;
+      const byBrand = collator.compare(first.brand, second.brand);
+      return order * (byBrand || collator.compare(first.name, second.name));
+    });
+  } else if (field === 'price') {
+    sorted.sort((first, second) => {
+      const firstPrice = catalogProductPrice(first);
+      const secondPrice = catalogProductPrice(second);
+      if (!firstPrice && secondPrice) return 1;
+      if (firstPrice && !secondPrice) return -1;
+      return order * (firstPrice - secondPrice || collator.compare(first.name, second.name));
+    });
+  }
+
+  return sorted;
+}
+
+function updateCatalogResult(visibleCount, totalCount) {
+  if (!catalogResult) return;
+  const context = [];
+  if (activeBrand) context.push(`nhãn hiệu ${activeBrand}`);
+  if (productSearchQuery) context.push(`từ khóa “${productSearchQuery}”`);
+  catalogResult.textContent = context.length
+    ? `${visibleCount} / ${totalCount} sản phẩm · ${context.join(' · ')}`
+    : `${totalCount} sản phẩm`;
+}
+
 function renderBrandDirectory() {
   if (!brandDirectory) return;
   activeBrand = normaliseAeonBrand(activeBrand);
@@ -510,7 +844,7 @@ function renderBrandDirectory() {
     <div><h3>Thương hiệu</h3><p>${selectedLabel}</p></div>
     <button type="button" class="brand-filter-reset${activeBrand ? '' : ' is-active'}" data-brand-filter="" aria-pressed="${activeBrand ? 'false' : 'true'}">Tất cả</button>
   </div>
-  <div class="brand-groups">${AEON_BRAND_GROUPS.map(group => `<section class="brand-group"><h4>${escapeHtml(group.name)}</h4><div class="brand-group-list">${group.brands.map(brand => `<button type="button" class="brand-chip${activeBrand === brand.name ? ' is-active' : ''}" data-brand-filter="${escapeHtml(brand.name)}" aria-pressed="${activeBrand === brand.name ? 'true' : 'false'}">${escapeHtml(brand.name)}</button>`).join('')}</div></section>`).join('')}</div>`;
+  <div class="brand-groups">${aeonBrandGroups().filter(group => group.brands.length).map(group => `<section class="brand-group"><h4>${escapeHtml(group.name)}</h4><div class="brand-group-list">${group.brands.map(brand => `<button type="button" class="brand-chip${activeBrand === brand.name ? ' is-active' : ''}" data-brand-filter="${escapeHtml(brand.name)}" aria-pressed="${activeBrand === brand.name ? 'true' : 'false'}">${escapeHtml(brand.name)}</button>`).join('')}</div></section>`).join('')}</div>`;
 }
 
 function reconcileCart() {
@@ -536,13 +870,20 @@ function renderProducts() {
   products = aeonStore.products().map(normaliseProduct).filter(product => product.id);
   reconcileCart();
   renderBrandDirectory();
-  const visibleProducts = activeBrand ? products.filter(product => product.brand === activeBrand) : products;
+  const searchTerm = normaliseCatalogText(productSearchQuery);
+  const filteredProducts = products.filter(product => {
+    const matchesBrand = !activeBrand || product.brand === activeBrand;
+    const matchesSearch = !searchTerm || catalogProductText(product).includes(searchTerm);
+    return matchesBrand && matchesSearch;
+  });
+  const visibleProducts = sortCatalogProducts(filteredProducts);
+  updateCatalogResult(visibleProducts.length, products.length);
   grid.dataset.productCount = String(visibleProducts.length);
   grid.classList.toggle('storefront-admin-grid', isStorefrontAdmin());
 
   if (!visibleProducts.length) {
     const emptyContent = products.length
-      ? `<div class="catalog-empty brand-empty"><span>✦</span><h3>Chưa có sản phẩm của ${escapeHtml(activeBrand)}</h3><p>Hãy chọn thương hiệu khác hoặc xem toàn bộ danh mục.</p><button type="button" class="catalog-admin-add" data-brand-filter="">Xem tất cả sản phẩm</button></div>`
+      ? `<div class="catalog-empty brand-empty"><span>✦</span><h3>Không tìm thấy sản phẩm phù hợp</h3><p>Hãy thử từ khóa khác, đổi nhãn hiệu hoặc xem toàn bộ danh mục.</p><button type="button" class="catalog-admin-add" data-clear-catalog-filters>Xóa bộ lọc</button></div>`
       : `<div class="catalog-empty"><span>✦</span><h3>Danh mục đang được cập nhật</h3><p>Hình ảnh, thông tin sản phẩm và giá bán sẽ được bổ sung ngay khi có công bố chính thức.</p>${isStorefrontAdmin() ? '<button type="button" class="catalog-admin-add" data-storefront-new>+ Tạo sản phẩm đầu tiên</button>' : ''}</div>`;
     grid.innerHTML = emptyContent;
     renderCart();
@@ -692,10 +1033,12 @@ function openProductDetail(id) {
 
   const variants = hasVariants(product);
   const canOrder = canOrderProduct(product);
+  const variantLabel = product.variantLabel || 'Phân loại';
+  const variantPrompt = `Chọn ${variantLabel.toLocaleLowerCase('vi-VN')}`;
   const detailText = product.details || product.description || 'Thông tin chi tiết đang được cập nhật.';
   const detailHtml = AEONRichText.render(detailText);
   $('#productDetailBody').innerHTML = `<div class="detail-art" style="--product-bg:${safeColor(product.bg)}">${productImageMarkup(product, 'detail-official-image', 'detail-image-placeholder', 'Hình ảnh chính thức<br>đang cập nhật')}</div>
-    <div class="detail-copy">${product.brand ? `<p class="detail-brand">${escapeHtml(product.brand)}</p>` : ''}${product.label ? `<p class="eyebrow">${escapeHtml(product.label)}</p>` : ''}<h2>${escapeHtml(product.name)}</h2><p class="detail-price" id="detailPrice">${priceLabel(product)}</p>${variants ? `<section class="detail-variant-picker" aria-labelledby="detailVariantLabel"><div class="detail-variant-head"><span id="detailVariantLabel">Chọn phân loại</span><b id="detailVariantStatus">Vui lòng chọn một loại</b></div><div class="detail-variant-options" role="group" aria-label="Phân loại sản phẩm">${product.variants.map(variant => `<button type="button" data-detail-variant="${escapeHtml(variant.id)}" aria-pressed="false"><span>${escapeHtml(variant.name)}</span><strong>${variant.price > 0 ? fmt(variant.price) : 'Liên hệ'}</strong></button>`).join('')}</div></section>` : ''}<p class="detail-meta" id="detailSku"${product.sku ? '' : ' hidden'}>${product.sku ? `Mã sản phẩm: ${escapeHtml(product.sku)}` : ''}</p><p class="detail-description">${escapeHtml(detailText)}</p><dl><div><dt>Quy cách</dt><dd>${escapeHtml(product.weight || 'Thông tin đang cập nhật')}</dd></div><div><dt>Thành phần nổi bật</dt><dd>${escapeHtml(product.ingredients || 'Thông tin đang cập nhật')}</dd></div></dl><div class="detail-actions">${variants ? `<button class="button primary" data-detail-add="${escapeHtml(product.id)}" id="detailAdd" disabled>Chọn phân loại</button><button class="quantity-button" data-detail-qty="-1" aria-label="Giảm số lượng">−</button><b id="detailQty">1</b><button class="quantity-button" data-detail-qty="1" aria-label="Tăng số lượng">+</button>` : canOrder ? `<button class="button primary" data-detail-add="${escapeHtml(product.id)}" id="detailAdd">Thêm vào giỏ <span>→</span></button><button class="quantity-button" data-detail-qty="-1" aria-label="Giảm số lượng">−</button><b id="detailQty">1</b><button class="quantity-button" data-detail-qty="1" aria-label="Tăng số lượng">+</button>` : '<a class="button primary" href="tel:0327747337">Liên hệ tư vấn <span>→</span></a>'}</div></div>`;
+    <div class="detail-copy">${product.brand ? `<p class="detail-brand">${escapeHtml(product.brand)}</p>` : ''}${product.label ? `<p class="eyebrow">${escapeHtml(product.label)}</p>` : ''}<h2>${escapeHtml(product.name)}</h2><p class="detail-price" id="detailPrice">${priceLabel(product)}</p>${variants ? `<section class="detail-variant-picker" aria-labelledby="detailVariantLabel"><div class="detail-variant-head"><span id="detailVariantLabel">${escapeHtml(variantPrompt)}</span><b id="detailVariantStatus">Vui lòng chọn một lựa chọn</b></div><div class="detail-variant-options" role="group" aria-label="${escapeHtml(variantLabel)}">${product.variants.map(variant => `<button type="button" data-detail-variant="${escapeHtml(variant.id)}" aria-pressed="false"><span>${escapeHtml(variant.name)}</span><strong>${variant.price > 0 ? fmt(variant.price) : 'Liên hệ'}</strong></button>`).join('')}</div></section>` : ''}<p class="detail-meta" id="detailSku"${product.sku ? '' : ' hidden'}>${product.sku ? `Mã sản phẩm: ${escapeHtml(product.sku)}` : ''}</p><p class="detail-description">${escapeHtml(detailText)}</p><dl><div><dt>Quy cách</dt><dd>${escapeHtml(product.weight || 'Thông tin đang cập nhật')}</dd></div><div><dt>Thành phần nổi bật</dt><dd>${escapeHtml(product.ingredients || 'Thông tin đang cập nhật')}</dd></div></dl><div class="detail-actions">${variants ? `<button class="button primary" data-detail-add="${escapeHtml(product.id)}" id="detailAdd" disabled>${escapeHtml(variantPrompt)}</button><button class="quantity-button" data-detail-qty="-1" aria-label="Giảm số lượng">−</button><b id="detailQty">1</b><button class="quantity-button" data-detail-qty="1" aria-label="Tăng số lượng">+</button>` : canOrder ? `<button class="button primary" data-detail-add="${escapeHtml(product.id)}" id="detailAdd">Thêm vào giỏ <span>→</span></button><button class="quantity-button" data-detail-qty="-1" aria-label="Giảm số lượng">−</button><b id="detailQty">1</b><button class="quantity-button" data-detail-qty="1" aria-label="Tăng số lượng">+</button>` : '<a class="button primary" href="tel:0327747337">Liên hệ tư vấn <span>→</span></a>'}</div></div>`;
   const detailDescription = $('#productDetailBody').querySelector('.detail-description');
   detailDescription.outerHTML = '<div class="detail-description richtext-output">' + detailHtml + '</div>';
   modal.dataset.id = id;
@@ -725,7 +1068,44 @@ function toggleCart(force) {
   if (open) $('#closeCart').focus();
 }
 
+productSearchForm.addEventListener('submit', event => {
+  event.preventDefault();
+  productSearchQuery = productSearchInput.value.trim();
+  clearProductSearch.hidden = !productSearchQuery;
+  renderProducts();
+  catalogSection.scrollIntoView({behavior:'smooth', block:'start'});
+});
+
+productSearchInput.addEventListener('input', () => {
+  productSearchQuery = productSearchInput.value.trim();
+  clearProductSearch.hidden = !productSearchQuery;
+  renderProducts();
+});
+
+clearProductSearch.addEventListener('click', () => {
+  productSearchInput.value = '';
+  productSearchQuery = '';
+  clearProductSearch.hidden = true;
+  renderProducts();
+  productSearchInput.focus();
+});
+
+productSort.addEventListener('change', () => {
+  productSortValue = productSort.value;
+  renderProducts();
+});
+
 document.addEventListener('click', event => {
+  const clearCatalogFilters = event.target.closest('[data-clear-catalog-filters]');
+  if (clearCatalogFilters) {
+    activeBrand = '';
+    productSearchQuery = '';
+    productSearchInput.value = '';
+    clearProductSearch.hidden = true;
+    renderProducts();
+    return;
+  }
+
   const brandFilter = event.target.closest('[data-brand-filter]');
   if (brandFilter) {
     activeBrand = normaliseAeonBrand(brandFilter.dataset.brandFilter);
@@ -736,6 +1116,11 @@ document.addEventListener('click', event => {
   const adminNew = event.target.closest('[data-storefront-new]');
   if (adminNew) {
     openStorefrontProductEditor();
+    return;
+  }
+
+  if (event.target.closest('[data-storefront-appearance]')) {
+    openStorefrontAppearance();
     return;
   }
 
@@ -830,22 +1215,44 @@ $('.menu-toggle').onclick = event => {
   event.currentTarget.setAttribute('aria-expanded', String(nav.classList.contains('show')));
 };
 
-$('#orderForm').addEventListener('submit', event => {
+async function syncOrderToGoogleSheet(customer, order) {
+  const response = await fetch('/api/google-sheet/orders', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({customer, order})
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.ok) throw new Error(result.error || 'Không thể đồng bộ Google Sheet.');
+  return result;
+}
+
+async function saveGoogleSheetSyncStatus(orderCode, syncStatus) {
+  const latestOrders = aeonStore.orders();
+  const updatedOrders = latestOrders.map(order => order.code === orderCode ? {...order, googleSheetSync:syncStatus} : order);
+  await aeonStore.set('aeon-orders', updatedOrders);
+}
+
+$('#orderForm').addEventListener('submit', async event => {
   event.preventDefault();
+  const orderForm = event.currentTarget;
   const error = $('#formError');
   if (!cart.length) {
     error.textContent = 'Vui lòng thêm ít nhất một sản phẩm vào giỏ trước khi đặt hàng.';
     return;
   }
-  if (!event.currentTarget.checkValidity()) {
+  if (!orderForm.checkValidity()) {
     error.textContent = 'Vui lòng hoàn thiện các thông tin bắt buộc.';
-    event.currentTarget.reportValidity();
+    orderForm.reportValidity();
     return;
   }
 
   error.textContent = '';
+  const submitButton = orderForm.querySelector('[type="submit"]');
+  submitButton.disabled = true;
+  const submitButtonHtml = submitButton.innerHTML;
+  submitButton.textContent = 'Đang ghi nhận đơn...';
   const summary = totals();
-  const form = new FormData(event.currentTarget);
+  const form = new FormData(orderForm);
   const name = String(form.get('name') || 'Quý khách');
   const code = `AM${String(Date.now()).slice(-6)}`;
   const customer = {
@@ -865,15 +1272,28 @@ $('#orderForm').addEventListener('submit', event => {
     discount: summary.discount,
     promotion: summary.promo.label,
     total: summary.total,
-    createdAt: customer.createdAt
+    createdAt: customer.createdAt,
+    googleSheetSync: {status:'pending'}
   };
-  aeonStore.set('aeon-customers', [customer, ...aeonStore.customers()]);
-  aeonStore.set('aeon-orders', [order, ...aeonStore.orders()]);
+  const customersSaved = await aeonStore.set('aeon-customers', [customer, ...aeonStore.customers()]);
+  const ordersSaved = await aeonStore.set('aeon-orders', [order, ...aeonStore.orders()]);
+  if (!customersSaved || !ordersSaved) {
+    error.textContent = 'Đơn đã được lưu trên thiết bị này nhưng chưa đồng bộ lên máy chủ. Vui lòng kiểm tra kết nối trước khi xuất Excel.';
+  }
+  try {
+    await syncOrderToGoogleSheet(customer, order);
+    await saveGoogleSheetSyncStatus(code, {status:'synced', syncedAt:new Date().toISOString()});
+  } catch (sheetError) {
+    await saveGoogleSheetSyncStatus(code, {status:'failed', failedAt:new Date().toISOString(), message:String(sheetError.message || 'Không thể đồng bộ Google Sheet.').slice(0, 300)});
+    if (customersSaved && ordersSaved) error.textContent = 'Đơn đã được lưu thành công. Google Sheet chưa nhận được dữ liệu; quản trị viên cần kiểm tra quyền triển khai Apps Script.';
+  }
   $('#successText').innerHTML = `Cảm ơn <b>${escapeHtml(name)}</b>. Đơn hàng <b>${code}</b> đã được ghi nhận${summary.discount ? ` với ưu đãi <b>${escapeHtml(summary.promo.label)}</b> (−${fmt(summary.discount)})` : ''}. Chúng tôi sẽ sớm liên hệ để xác nhận.`;
   $('#successModal').classList.add('show');
   cart = [];
   renderCart();
-  event.currentTarget.reset();
+  orderForm.reset();
+  submitButton.disabled = false;
+  submitButton.innerHTML = submitButtonHtml;
 });
 
 ['#closeSuccess', '#doneOrder'].forEach(selector => {
@@ -882,6 +1302,7 @@ $('#orderForm').addEventListener('submit', event => {
 
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
+  if (closeStorefrontAppearance()) return;
   if (closeStorefrontProductEditor()) return;
   toggleCart(false);
   $('#successModal').classList.remove('show');
@@ -896,7 +1317,7 @@ const refreshStorefront = () => {
 };
 
 window.addEventListener('storage', event => {
-  if (['aeon-layout', 'aeon-products', 'aeon-ui', 'aeon-admin'].includes(event.key)) refreshStorefront();
+  if (['aeon-layout', 'aeon-products', 'aeon-ui', 'aeon-brands', 'aeon-admin'].includes(event.key)) refreshStorefront();
 });
 window.addEventListener('aeon-store-sync', refreshStorefront);
 

@@ -1,0 +1,56 @@
+.sheet-sync-card {
+  margin-bottom: 20px;
+}
+
+.sheet-sync-card .panel-action {
+  margin-bottom: 16px;
+}
+
+.sheet-sync-card .panel-action h2 {
+  margin-top: 0;
+}
+
+.sheet-sync-card .secondary-button {
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.sheet-sync-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sheet-sync-stats span {
+  padding: 13px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.sheet-sync-stats b {
+  display: block;
+  color: var(--ink);
+  font-size: 19px;
+}
+
+.sheet-sync-stats .has-error b {
+  color: #b51235;
+}
+
+.sheet-sync-help {
+  margin: 15px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.sheet-sync-help a {
+  color: var(--red);
+}
+
+@media (max-width: 760px) {
+  .sheet-sync-stats {
+    grid-template-columns: 1fr;
+  }
+}

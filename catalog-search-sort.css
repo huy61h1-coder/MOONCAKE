@@ -1,0 +1,211 @@
+/* Search in the top bar and catalog sorting controls. */
+.site-header {
+  gap: clamp(10px, 1.8vw, 28px);
+}
+
+.site-header > .brand {
+  flex: 0 0 auto;
+}
+
+.site-header nav {
+  margin-left: auto;
+  gap: clamp(14px, 2vw, 30px);
+}
+
+.top-product-search {
+  position: relative;
+  display: flex;
+  flex: 0 1 250px;
+  align-items: center;
+  width: clamp(175px, 19vw, 250px);
+  height: 40px;
+  margin: 0;
+  border: 1px solid rgba(190, 177, 158, .82);
+  background: rgba(255, 255, 255, .72);
+  transition: border-color .18s, background .18s, box-shadow .18s;
+}
+
+.top-product-search:focus-within {
+  border-color: var(--red);
+  background: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 10%, transparent);
+}
+
+.top-product-search > svg {
+  flex: 0 0 17px;
+  width: 17px;
+  height: 17px;
+  margin-left: 12px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.top-product-search input {
+  min-width: 0;
+  height: 100%;
+  padding: 0 32px 0 9px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 500 11px 'Be Vietnam Pro', sans-serif;
+}
+
+.top-product-search input:focus {
+  border: 0;
+}
+
+.top-product-search input::placeholder {
+  color: #8b8480;
+}
+
+.top-product-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.top-product-search button {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  translate: 0 -50%;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 400 20px/1 sans-serif;
+  cursor: pointer;
+}
+
+.top-product-search button:hover,
+.top-product-search button:focus-visible {
+  color: var(--red);
+  outline: 0;
+}
+
+.catalog-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  max-width: 1440px;
+  margin: 0 auto 14px;
+}
+
+.catalog-result {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.catalog-controls label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.catalog-controls select {
+  min-width: 178px;
+  height: 38px;
+  padding: 0 33px 0 12px;
+  border: 1px solid rgba(190, 177, 158, .82);
+  border-radius: 0;
+  background: #fff;
+  color: var(--ink);
+  font: 600 10px 'Be Vietnam Pro', sans-serif;
+  outline: 0;
+  cursor: pointer;
+}
+
+.catalog-controls select:focus-visible {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 10%, transparent);
+}
+
+@media (max-width: 1080px) and (min-width: 761px) {
+  .site-header {
+    gap: 12px;
+  }
+
+  .site-header nav {
+    gap: 14px;
+  }
+
+  .top-product-search {
+    flex-basis: 185px;
+    width: 185px;
+  }
+}
+
+@media (max-width: 760px) {
+  .site-header {
+    gap: 7px;
+  }
+
+  .site-header > .brand {
+    margin-right: auto;
+  }
+
+  .top-product-search {
+    order: 0;
+    flex: 0 0 min(122px, 32vw);
+    width: min(122px, 32vw);
+    height: 36px;
+  }
+
+  .top-product-search > svg {
+    width: 15px;
+    height: 15px;
+    margin-left: 9px;
+  }
+
+  .top-product-search input {
+    padding-left: 7px;
+    padding-right: 26px;
+    font-size: 10px;
+  }
+
+  .top-product-search button {
+    right: 1px;
+    width: 25px;
+    height: 25px;
+  }
+
+  .cart-button {
+    order: 1;
+    flex: 0 0 auto;
+  }
+
+  .menu-toggle {
+    order: 2;
+    flex: 0 0 auto;
+  }
+
+  .catalog-controls {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+    margin-bottom: 13px;
+  }
+
+  .catalog-result {
+    font-size: 10px;
+  }
+
+  .catalog-controls label {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .catalog-controls select {
+    min-width: 0;
+    width: min(235px, 72%);
+  }
+}

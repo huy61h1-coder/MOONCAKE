@@ -29,6 +29,7 @@ body.admin-preview .product{box-shadow:inset 0 0 0 1px rgba(169,22,58,.14)}
 .storefront-admin-form-grid input,.storefront-admin-form-grid textarea{margin-top:4px}
 .storefront-admin-form-grid .wide{grid-column:1/-1}
 .storefront-admin-upload{display:grid!important;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px}
+.storefront-admin-upload>label{grid-column:1/-1;display:block;color:var(--ink);font-size:11px;font-weight:700}
 .storefront-admin-upload input{grid-column:1/-1}
 .storefront-admin-upload button{border:1px solid var(--line);background:#fff;color:var(--wine);font:700 10px 'Be Vietnam Pro';cursor:pointer;padding:9px 12px}
 .storefront-admin-upload button:disabled{cursor:wait;opacity:.65}

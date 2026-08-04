@@ -19,14 +19,23 @@ venv/
 .vscode/
 .idea/
 
-# Logs
+# Logs and builds
 *.log
-
-# Build
 bin/
 obj/
 dist/
 build/
 
-# Secrets
+# Local secrets and runtime state
 .env
+.env.local
+.aeon-store.json
+.aeon-store.json.tmp
+.codex-sheet/
+
+# Runtime uploads and generated artifacts
+assets/uploads/
+output/
+outputs/
+tmp/
+*.inspect.ndjson

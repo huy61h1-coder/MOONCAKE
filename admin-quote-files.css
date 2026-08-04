@@ -1,0 +1,54 @@
+.quote-file-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 20px 0;
+}
+
+.quote-file-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  background: #fbf8f1;
+}
+
+.quote-file-card h3 {
+  margin: 0 0 15px;
+  font-size: 16px;
+}
+
+.quote-file-card > label {
+  display: block;
+  margin-bottom: 15px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.quote-file-status {
+  min-height: 22px;
+  margin: 13px 0 5px;
+  font-size: 10px;
+}
+
+.quote-file-status a {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.quote-file-status.is-empty {
+  color: var(--muted);
+}
+
+.quote-clear-file {
+  padding: 4px 0;
+}
+
+@media (max-width: 760px) {
+  .quote-file-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-file-card {
+    padding: 16px;
+  }
+}
