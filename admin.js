@@ -465,7 +465,21 @@ async function saveLogoSettings(patch = {}) {
 }
 
 function isAuthed() {
-  return aeonStore.isAdminSession();
+  return Boolean(adminSession?.authenticated);
+}
+
+function showLogin(message = '') {
+  const login = $('#loginView');
+  const app = $('#adminApp');
+  adminSession = {authenticated:false, user:null};
+  aeonStore.setAdminSession(false);
+  app.hidden = true;
+  app.style.display = 'none';
+  login.hidden = false;
+  login.style.display = '';
+  document.body.classList.remove('admin-auth-pending', 'admin-authenticated');
+  document.body.classList.add('admin-auth-checked', 'admin-auth-guest');
+  if (message) $('#loginError').textContent = message;
 }
 
 function showApp() {
@@ -480,6 +494,8 @@ function showApp() {
   login.style.display = 'none';
   app.hidden = false;
   app.style.display = 'block';
+  document.body.classList.remove('admin-auth-pending', 'admin-auth-guest');
+  document.body.classList.add('admin-auth-checked', 'admin-authenticated');
   history.replaceState(null, '', `admin.html#${tab}`);
   render();
 }
@@ -532,6 +548,7 @@ document.querySelectorAll('[data-tab]').forEach(button => {
 });
 
 function render() {
+  if (!isAuthed()) return;
   const labels = {
     dashboard: 'Tổng quan',
     products: 'Sản phẩm & giá',
@@ -1929,13 +1946,9 @@ async function initialiseAdminSession() {
       showApp();
       return;
     }
-    adminSession = {authenticated:false, user:null};
-    aeonStore.setAdminSession(false);
-    if (result.configured === false) $('#loginError').textContent = 'Máy chủ chưa cấu hình ADMIN_USERNAME và ADMIN_PASSWORD.';
+    showLogin(result.configured === false ? 'Máy chủ chưa cấu hình ADMIN_USERNAME và ADMIN_PASSWORD.' : '');
   } catch {
-    adminSession = {authenticated:false, user:null};
-    aeonStore.setAdminSession(false);
-    $('#loginError').textContent = 'Không thể kiểm tra phiên quản trị. Hãy kiểm tra kết nối máy chủ.';
+    showLogin('Không thể kiểm tra phiên quản trị. Hãy kiểm tra kết nối máy chủ.');
   }
 }
 initialiseAdminSession();

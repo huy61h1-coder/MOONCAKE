@@ -150,7 +150,7 @@ $('.cart-total small').textContent = 'Phí giao hàng và ưu đãi sẽ đượ
 $('footer p').textContent = '© 2026 AEON Mooncake.';
 
 document.body.insertAdjacentHTML('beforeend', '<button class="mobile-cart-cta" id="mobileCart" aria-label="Mở giỏ hàng"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L20 8H7.1"></path><circle cx="10" cy="20" r="1"></circle><circle cx="17" cy="20" r="1"></circle></svg><span>Giỏ hàng</span><b id="mobileCartCount">0</b><i>Xem giỏ →</i></button>');
-$('.site-header nav').insertAdjacentHTML('beforeend', '<a href="admin.html">Quản trị</a>');
+$('.site-header nav').insertAdjacentHTML('beforeend', '<a href="admin.html">Đăng nhập</a>');
 
 ['product-detail.css', 'hotline.css?v=20260804-contact', 'promotion.css', 'hero-promotion.css', 'catalog-focus.css', 'hero-compact.css', 'admin-layout.css', 'storefront-refine.css', 'mobile-storefront.css', 'official-assets.css', 'product-modal-fix.css', 'product-variants.css', 'storefront-product-ux.css', 'brand-directory.css', 'storefront-admin.css', 'theme-customization.css', 'quote-download.css', 'catalog-search-sort.css?v=20260804-search-sort'].forEach(href => {
   const alreadyLoaded = [...document.head.querySelectorAll('link[rel="stylesheet"]')]
