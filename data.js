@@ -221,11 +221,32 @@ const AEON_DEFAULT_LAYOUT = {
   sectionSpacing: 0,
   productImageHeight: 0,
   productColumns: 0,
+  productColumnsMobile: 0,
+  fontFamily: 'aeon-default',
   logoSize: 25
 };
 
 const sharedKeys = ['aeon-products', 'aeon-ui', 'aeon-layout', 'aeon-brands', 'aeon-customers', 'aeon-orders'];
 const canSync = () => location.protocol === 'http:' || location.protocol === 'https:';
+
+// The server places only storefront-safe data in the first HTML response.
+// Hydrate it before rendering so an old device-local layout cannot flash first.
+function embeddedStorefrontState() {
+  try {
+    const source = document.getElementById('aeon-public-state')?.textContent || '';
+    const state = JSON.parse(source);
+    return state && typeof state === 'object' ? state : {};
+  } catch {
+    return {};
+  }
+}
+
+const initialStorefrontState = embeddedStorefrontState();
+['aeon-products', 'aeon-ui', 'aeon-layout', 'aeon-brands'].forEach(key => {
+  if (Object.hasOwn(initialStorefrontState, key)) {
+    localStorage.setItem(key, JSON.stringify(initialStorefrontState[key]));
+  }
+});
 
 const aeonStore = {
   writing: new Set(),
@@ -376,4 +397,6 @@ if (Array.isArray(savedProducts) && savedProducts.length === sampleProductIds.le
   localStorage.removeItem('aeon-products');
 }
 
-aeonStore.pull();
+// Let the storefront wait for the server state once on a fresh page load so
+// an older browser-local banner never replaces the current shared banner.
+window.aeonStoreReady = aeonStore.pull();

@@ -40,7 +40,7 @@ function normaliseVariants(value, fallbackPrice) {
     const price = Number.isFinite(rawPrice) && rawPrice >= 0 ? Math.round(rawPrice) : fallbackPrice;
     const rawId = String(variant.id || variant.sku || name || index + 1).trim();
     const id = rawId.replace(/\s+/g, '-').slice(0, 100) || `variant-${index + 1}`;
-    return {id, name, price, sku: String(variant.sku || '').trim().slice(0, 100)};
+    return {id, name, price, sku: String(variant.sku || '').trim().slice(0, 100), image: normaliseImageUrl(variant.image || '')};
   }).filter(Boolean);
 }
 
@@ -109,7 +109,7 @@ function cartItemFromProduct(product, variant = null) {
     cartKey: cartKey(product.id, variantId),
     name: product.name,
     price: variant ? variant.price : product.price,
-    image: product.image,
+    image: variant?.image || product.image,
     bg: product.bg,
     sku: variant?.sku || product.sku,
     variantId,
@@ -138,6 +138,7 @@ const clearProductSearch = $('#clearProductSearch');
 const productSort = $('#productSort');
 const catalogResult = $('#catalogResult');
 let activeBrand = '';
+let brandDirectoryExpanded = false;
 let productSearchQuery = '';
 let productSortValue = 'featured';
 
@@ -152,7 +153,9 @@ document.body.insertAdjacentHTML('beforeend', '<button class="mobile-cart-cta" i
 $('.site-header nav').insertAdjacentHTML('beforeend', '<a href="admin.html">Quản trị</a>');
 
 ['product-detail.css', 'hotline.css?v=20260804-contact', 'promotion.css', 'hero-promotion.css', 'catalog-focus.css', 'hero-compact.css', 'admin-layout.css', 'storefront-refine.css', 'mobile-storefront.css', 'official-assets.css', 'product-modal-fix.css', 'product-variants.css', 'storefront-product-ux.css', 'brand-directory.css', 'storefront-admin.css', 'theme-customization.css', 'quote-download.css', 'catalog-search-sort.css?v=20260804-search-sort'].forEach(href => {
-  document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href}));
+  const alreadyLoaded = [...document.head.querySelectorAll('link[rel="stylesheet"]')]
+    .some(link => link.getAttribute('href') === href);
+  if (!alreadyLoaded) document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href}));
 });
 
 document.body.insertAdjacentHTML('beforeend', '<aside class="hotline-widget" aria-label="Liên hệ tư vấn"><a class="hotline-call contact-button" href="tel:0327747337" aria-label="Gọi hotline 0327 747 337"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.5 9.6 8 7.9 9.7c1.1 2.3 2.9 4.1 5.2 5.2l1.7-1.7 4.5 2.4-.9 3.8c-.2.8-.9 1.3-1.7 1.3C9.2 20.7 3.3 14.8 3.3 7.3c0-.8.5-1.5 1.3-1.7l2.6-.6Z"></path></svg><span><small>Hotline</small><b>0327 747 337</b></span></a><a class="zalo-link contact-button" href="https://zalo.me/0327747337" target="_blank" rel="noopener noreferrer" aria-label="Nhắn tin qua Zalo"><span>Chat</span><b>Zalo</b></a></aside>');
@@ -163,7 +166,7 @@ $('.benefits').insertAdjacentHTML('afterend', '<section class="promotion-section
 const compactPromotion = $('#promotion');
 const heroCopy = $('.hero-copy');
 compactPromotion.className = 'hero-promotion';
-compactPromotion.innerHTML = '<span data-promotion-title></span><p data-promotion-text></p>';
+compactPromotion.innerHTML = '<span data-promotion-title></span><div data-promotion-text></div>';
 heroCopy.querySelector('.hero-actions').append(compactPromotion);
 
 const quoteDownload = $('#quoteDownload');
@@ -217,6 +220,7 @@ const catalogSection = $('#collection');
 const checkoutSection = $('#checkout');
 $('.hero').after(catalogSection);
 catalogSection.after(checkoutSection);
+checkoutSection.hidden = true;
 $('.story').hidden = true;
 $('.gift-banner').hidden = true;
 $('.how').hidden = true;
@@ -253,6 +257,26 @@ function formatBannerRatio(value) {
   return `${ratio.toFixed(2).replace(/\.?0+$/, '')}:1`;
 }
 
+const LAYOUT_FONT_FAMILIES = {
+  'aeon-default': 'Mặc định AEON',
+  'be-vietnam-pro': 'Be Vietnam Pro',
+  'playfair-display': 'Playfair Display',
+  arial: 'Arial',
+  georgia: 'Georgia'
+};
+
+function normaliseLayoutFontFamily(value) {
+  const key = String(value || '').trim();
+  return Object.hasOwn(LAYOUT_FONT_FAMILIES, key) ? key : AEON_DEFAULT_LAYOUT.fontFamily;
+}
+
+function layoutFontFamilyOptions(value) {
+  const selected = normaliseLayoutFontFamily(value);
+  return Object.entries(LAYOUT_FONT_FAMILIES)
+    .map(([key, label]) => `<option value="${key}"${key === selected ? ' selected' : ''}>${label}</option>`)
+    .join('');
+}
+
 function appearanceRangeMarkup(name, label, value, min, max, step = 1, autoLabel = '', outputFormat = 'px') {
   const numeric = Number(value) || 0;
   const output = outputFormat === 'ratio'
@@ -263,7 +287,7 @@ function appearanceRangeMarkup(name, label, value, min, max, step = 1, autoLabel
 
 function storefrontAppearanceValues(form, base = aeonStore.layout()) {
   const values = Object.fromEntries(new FormData(form));
-  ['heroTitleSize', 'heroIntroSize', 'bannerAspectRatio', 'productTitleSize', 'headerHeight', 'heroHeight', 'sectionSpacing', 'productImageHeight', 'productColumns', 'logoSize'].forEach(key => {
+  ['heroTitleSize', 'heroIntroSize', 'bannerAspectRatio', 'productTitleSize', 'headerHeight', 'heroHeight', 'sectionSpacing', 'productImageHeight', 'productColumns', 'productColumnsMobile', 'logoSize'].forEach(key => {
     values[key] = Number(values[key]);
   });
   return {...base, ...values};
@@ -309,7 +333,9 @@ function openStorefrontAppearance() {
           ${appearanceRangeMarkup('sectionSpacing', 'Khoảng cách đầu/cuối khu vực', layout.sectionSpacing, 0, 170, 5, 'Tự động')}
           ${appearanceRangeMarkup('productImageHeight', 'Chiều cao ảnh sản phẩm', layout.productImageHeight, 0, 480, 10, 'Tự động')}
           ${appearanceRangeMarkup('logoSize', 'Cỡ logo', layout.logoSize, 18, 48)}
-          <label>Số cột sản phẩm trên desktop<select name="productColumns"><option value="0"${Number(layout.productColumns) === 0 ? ' selected' : ''}>Tự động</option><option value="2"${Number(layout.productColumns) === 2 ? ' selected' : ''}>2 cột</option><option value="3"${Number(layout.productColumns) === 3 ? ' selected' : ''}>3 cột</option><option value="4"${Number(layout.productColumns) === 4 ? ' selected' : ''}>4 cột</option></select></label>
+          <label>Font chữ giao diện<select name="fontFamily">${layoutFontFamilyOptions(layout.fontFamily)}</select></label>
+          <label>Số cột sản phẩm trên desktop<select name="productColumns"><option value="0"${Number(layout.productColumns) === 0 ? ' selected' : ''}>Tự động</option><option value="1"${Number(layout.productColumns) === 1 ? ' selected' : ''}>1 cột</option><option value="2"${Number(layout.productColumns) === 2 ? ' selected' : ''}>2 cột</option><option value="3"${Number(layout.productColumns) === 3 ? ' selected' : ''}>3 cột</option><option value="4"${Number(layout.productColumns) === 4 ? ' selected' : ''}>4 cột</option><option value="5"${Number(layout.productColumns) === 5 ? ' selected' : ''}>5 cột</option><option value="6"${Number(layout.productColumns) === 6 ? ' selected' : ''}>6 cột</option></select></label>
+          <label>Số cột sản phẩm trên mobile<select name="productColumnsMobile"><option value="0"${Number(layout.productColumnsMobile) === 0 ? ' selected' : ''}>Tự động</option><option value="1"${Number(layout.productColumnsMobile) === 1 ? ' selected' : ''}>1 cột</option><option value="2"${Number(layout.productColumnsMobile) === 2 ? ' selected' : ''}>2 cột</option></select></label>
         </div></section>
         <p class="storefront-appearance-status" id="storefrontAppearanceStatus" role="status"></p>
         <footer><button class="danger" type="button" data-storefront-appearance-reset>Khôi phục mặc định</button><span></span><button class="storefront-appearance-cancel" type="button" data-storefront-appearance-close>Hủy</button><button class="button primary" type="submit">Lưu thay đổi</button></footer>
@@ -394,7 +420,7 @@ function newStorefrontVariantId() {
 
 function storefrontVariantRowMarkup(variant = {}) {
   const id = String(variant.id || newStorefrontVariantId());
-  return `<div class="product-variant-row" data-variant-id="${escapeHtml(id)}"><label>Tên lựa chọn<input data-variant-name required value="${escapeHtml(variant.name || '')}" placeholder="Ví dụ: Hộp 4 bánh"></label><label>Giá bán (VNĐ)<input data-variant-price type="number" min="0" inputmode="numeric" required value="${variant.price ?? ''}" placeholder="750000"></label><label>Mã SKU<input data-variant-sku value="${escapeHtml(variant.sku || '')}" placeholder="AM-2026-04"></label><button type="button" class="remove-product-variant" data-remove-variant aria-label="Xóa lựa chọn này">×</button></div>`;
+  return `<div class="product-variant-row" data-variant-id="${escapeHtml(id)}"><label>Tên lựa chọn<input data-variant-name required value="${escapeHtml(variant.name || '')}" placeholder="Ví dụ: Hộp 4 bánh"></label><label>Giá bán (VNĐ)<input data-variant-price type="number" min="0" inputmode="numeric" required value="${variant.price ?? ''}" placeholder="750000"></label><label>Mã SKU<input data-variant-sku value="${escapeHtml(variant.sku || '')}" placeholder="AM-2026-04"></label><label>Ảnh phân loại (URL)<input data-variant-image value="${escapeHtml(variant.image || '')}" placeholder="Để trống dùng ảnh chung"></label><button type="button" class="remove-product-variant" data-remove-variant aria-label="Xóa lựa chọn này">×</button></div>`;
 }
 
 function storefrontVariantsFromEditor(list) {
@@ -406,6 +432,7 @@ function storefrontVariantsFromEditor(list) {
     const name = cleanStorefrontProductText(row.querySelector('[data-variant-name]').value, 120);
     const price = Number(row.querySelector('[data-variant-price]').value);
     const sku = cleanStorefrontProductText(row.querySelector('[data-variant-sku]').value, 100);
+    const image = normaliseImageUrl(row.querySelector('[data-variant-image]')?.value || '');
     if (!name || !Number.isFinite(price) || price < 0) throw new Error('Mỗi lựa chọn cần có tên và giá bán hợp lệ.');
     const nameKey = name.toLocaleLowerCase('vi-VN');
     const skuKey = sku.toLocaleLowerCase('vi-VN');
@@ -413,7 +440,7 @@ function storefrontVariantsFromEditor(list) {
     if (sku && skus.has(skuKey)) throw new Error('Mã SKU của các lựa chọn không được trùng nhau.');
     names.add(nameKey);
     if (sku) skus.add(skuKey);
-    return {id: row.dataset.variantId || newStorefrontVariantId(), name, price: Math.round(price), sku};
+    return {id: row.dataset.variantId || newStorefrontVariantId(), name, price: Math.round(price), sku, image};
   });
 }
 
@@ -687,7 +714,9 @@ function applyUi() {
   hero.querySelector('h1').innerHTML = String(ui.title).split('\n').map((text, index) => index ? `<em>${escapeHtml(text)}</em>` : escapeHtml(text)).join('<br>');
   hero.querySelector('.intro').textContent = ui.intro;
   $('.hero-promotion [data-promotion-title]').textContent = ui.promotionTitle;
-  $('.hero-promotion [data-promotion-text]').textContent = ui.promotionText;
+  const promotionText = $('.hero-promotion [data-promotion-text]');
+  if (window.AEONPromotionRichText?.render) window.AEONPromotionRichText.render(promotionText, ui.promotionText);
+  else promotionText.textContent = ui.promotionText;
   renderQuoteDownload(ui);
 
   const art = $('.hero-art');
@@ -728,8 +757,13 @@ function applyLayout(nextLayout = aeonStore.layout()) {
   const heroHeight = layoutNumber(layout.heroHeight, 0, 700, 0);
   const sectionSpacing = layoutNumber(layout.sectionSpacing, 0, 170, 0);
   const productImageHeight = layoutNumber(layout.productImageHeight, 0, 480, 0);
-  const productColumns = layoutNumber(layout.productColumns, 0, 4, 0);
+  const productColumns = layoutNumber(layout.productColumns, 0, 6, 0);
+  const productColumnsMobile = layoutNumber(layout.productColumnsMobile, 0, 2, 0);
+  const fontFamily = normaliseLayoutFontFamily(layout.fontFamily);
   const logoSize = layoutNumber(layout.logoSize, 18, 48, AEON_DEFAULT_LAYOUT.logoSize);
+  const heroTitleSize = layoutNumber(layout.heroTitleSize, 10, 90, AEON_DEFAULT_LAYOUT.heroTitleSize);
+  const heroIntroSize = layoutNumber(layout.heroIntroSize, 12, 22, AEON_DEFAULT_LAYOUT.heroIntroSize);
+  const productTitleSize = layoutNumber(layout.productTitleSize, 12, 24, AEON_DEFAULT_LAYOUT.productTitleSize);
   const bannerAspectRatio = layoutNumber(layout.bannerAspectRatio, 1.5, 4, AEON_DEFAULT_LAYOUT.bannerAspectRatio);
   const bannerWidthScale = bannerAspectRatio / AEON_DEFAULT_LAYOUT.bannerAspectRatio;
   root.style.setProperty('--admin-header-height', `${headerHeight}px`);
@@ -737,22 +771,39 @@ function applyLayout(nextLayout = aeonStore.layout()) {
   root.style.setProperty('--admin-section-spacing', `${sectionSpacing}px`);
   root.style.setProperty('--admin-product-media-height', `${productImageHeight}px`);
   root.style.setProperty('--admin-logo-size', `${logoSize}px`);
+  root.style.setProperty('--admin-hero-title-size', `${heroTitleSize}px`);
+  root.style.setProperty('--admin-hero-intro-size', `${heroIntroSize}px`);
+  root.style.setProperty('--admin-product-title-size', `${productTitleSize}px`);
+  root.style.setProperty('--admin-mobile-hero-title-size', `${Math.max(10, heroTitleSize * .8)}px`);
+  root.style.setProperty('--admin-mobile-product-title-size', `${Math.max(12, productTitleSize * .9)}px`);
+  root.style.setProperty('--admin-mobile-single-product-title-size', `${Math.max(13, productTitleSize * .94)}px`);
+  root.style.setProperty('--admin-mobile-compact-product-title-size', `${Math.max(10, productTitleSize * .78)}px`);
   root.style.setProperty('--admin-banner-ratio', String(bannerAspectRatio));
   root.style.setProperty('--admin-banner-width-desktop', `${520 * bannerWidthScale}px`);
   root.style.setProperty('--admin-banner-width-mobile', '100%');
+  root.style.setProperty('--admin-font-family', ({
+    'be-vietnam-pro': "'Be Vietnam Pro', sans-serif",
+    'playfair-display': "'Playfair Display', Georgia, serif",
+    arial: 'Arial, Helvetica, sans-serif',
+    georgia: "Georgia, 'Times New Roman', serif"
+  })[fontFamily] || "'Be Vietnam Pro', sans-serif");
   document.body.classList.toggle('has-custom-hero-height', heroHeight > 0);
   document.body.classList.toggle('has-custom-section-spacing', sectionSpacing > 0);
   document.body.classList.toggle('has-custom-product-media', productImageHeight > 0);
-  document.body.classList.toggle('has-custom-product-columns', [2, 3, 4].includes(productColumns));
-  grid.dataset.layoutColumns = [2, 3, 4].includes(productColumns) ? String(productColumns) : '';
+  document.body.classList.toggle('has-custom-product-columns', [1, 2, 3, 4, 5, 6].includes(productColumns));
+  document.body.classList.toggle('has-custom-product-columns-mobile', [1, 2].includes(productColumnsMobile));
+  document.body.classList.toggle('has-custom-font-family', fontFamily !== 'aeon-default');
+  grid.dataset.layoutColumns = [1, 2, 3, 4, 5, 6].includes(productColumns) ? String(productColumns) : '';
+  grid.dataset.layoutColumnsMobile = [1, 2].includes(productColumnsMobile) ? String(productColumnsMobile) : '';
 
   const hero = $('.hero');
-  hero.style.setProperty('--admin-hero-title-size', `${layoutNumber(layout.heroTitleSize, 10, 90, AEON_DEFAULT_LAYOUT.heroTitleSize)}px`);
-  hero.style.setProperty('--admin-hero-intro-size', `${layoutNumber(layout.heroIntroSize, 12, 22, AEON_DEFAULT_LAYOUT.heroIntroSize)}px`);
+  hero.style.setProperty('--admin-hero-title-size', `${heroTitleSize}px`);
+  hero.style.setProperty('--admin-hero-intro-size', `${heroIntroSize}px`);
   hero.querySelector('.hero-actions').dataset.buttonAlign = layout.heroButtonAlign;
-  grid.style.setProperty('--admin-product-title-size', `${layoutNumber(layout.productTitleSize, 12, 24, AEON_DEFAULT_LAYOUT.productTitleSize)}px`);
+  grid.style.setProperty('--admin-product-title-size', `${productTitleSize}px`);
   grid.dataset.buttonAlign = layout.productButtonAlign;
   $('.checkout form').dataset.buttonAlign = layout.checkoutButtonAlign;
+  scheduleProductPriceFit();
 }
 
 function productImageMarkup(product, className, placeholderClass, placeholderText) {
@@ -840,11 +891,14 @@ function renderBrandDirectory() {
   if (!brandDirectory) return;
   activeBrand = normaliseAeonBrand(activeBrand);
   const selectedLabel = activeBrand ? `Đang xem: ${escapeHtml(activeBrand)}` : 'Chọn thương hiệu để lọc sản phẩm';
+  const brandToggleLabel = brandDirectoryExpanded ? 'Thu gọn danh sách thương hiệu' : 'Xem thêm thương hiệu để lọc sản phẩm';
   brandDirectory.innerHTML = `<div class="brand-directory-head">
-    <div><h3>Thương hiệu</h3><p>${selectedLabel}</p></div>
-    <button type="button" class="brand-filter-reset${activeBrand ? '' : ' is-active'}" data-brand-filter="" aria-pressed="${activeBrand ? 'false' : 'true'}">Tất cả</button>
+    <div><h3><button type="button" class="brand-directory-toggle" data-brand-directory-toggle aria-label="${brandToggleLabel}" aria-expanded="${brandDirectoryExpanded}" aria-controls="brandDirectoryContent">Thương hiệu <span class="brand-directory-toggle-state">${brandDirectoryExpanded ? 'Thu gọn' : 'Xem thêm'} <b aria-hidden="true">${brandDirectoryExpanded ? '↑' : '↓'}</b></span></button></h3><p>${selectedLabel}</p></div>
   </div>
-  <div class="brand-groups">${aeonBrandGroups().filter(group => group.brands.length).map(group => `<section class="brand-group"><h4>${escapeHtml(group.name)}</h4><div class="brand-group-list">${group.brands.map(brand => `<button type="button" class="brand-chip${activeBrand === brand.name ? ' is-active' : ''}" data-brand-filter="${escapeHtml(brand.name)}" aria-pressed="${activeBrand === brand.name ? 'true' : 'false'}">${escapeHtml(brand.name)}</button>`).join('')}</div></section>`).join('')}</div>`;
+  <div class="brand-directory-content" id="brandDirectoryContent"${brandDirectoryExpanded ? '' : ' hidden'}>
+    <div class="brand-directory-actions"><button type="button" class="brand-filter-reset${activeBrand ? '' : ' is-active'}" data-brand-filter="" aria-pressed="${activeBrand ? 'false' : 'true'}">Tất cả</button></div>
+    <div class="brand-groups">${aeonBrandGroups().filter(group => group.brands.length).map(group => `<section class="brand-group"><h4>${escapeHtml(group.name)}</h4><div class="brand-group-list">${group.brands.map(brand => `<button type="button" class="brand-chip${activeBrand === brand.name ? ' is-active' : ''}" data-brand-filter="${escapeHtml(brand.name)}" aria-pressed="${activeBrand === brand.name ? 'true' : 'false'}">${escapeHtml(brand.name)}</button>`).join('')}</div></section>`).join('')}</div>
+  </div>`;
 }
 
 function reconcileCart() {
@@ -904,15 +958,51 @@ function renderProducts() {
         <h3>${escapeHtml(product.name)}</h3>
         <div class="product-bottom">
           <span class="price${canOrder ? '' : ' is-contact'}">${priceLabel(product)}</span>
-          ${variants ? `<button class="product-choose" data-view="${escapeHtml(product.id)}" aria-label="Chọn phân loại cho ${escapeHtml(product.name)}">Chọn loại</button>` : canOrder ? `<button class="product-add" data-add="${escapeHtml(product.id)}" aria-label="Thêm ${escapeHtml(product.name)} vào giỏ hàng" title="Thêm vào giỏ hàng"><svg class="product-cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L20 8H7.1"></path><circle cx="10" cy="20" r="1"></circle><circle cx="17" cy="20" r="1"></circle></svg><span class="sr-only">Thêm vào giỏ hàng</span></button>` : '<a class="product-contact" href="tel:0327747337">Liên hệ</a>'}
+          <div class="product-bottom-actions">
+            ${variants ? `<button class="product-choose" data-view="${escapeHtml(product.id)}" aria-label="Chọn phân loại cho ${escapeHtml(product.name)}">Chọn loại</button>` : canOrder ? `<button class="product-add" data-add="${escapeHtml(product.id)}" aria-label="Thêm ${escapeHtml(product.name)} vào giỏ hàng" title="Thêm vào giỏ hàng"><svg class="product-cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L20 8H7.1"></path><circle cx="10" cy="20" r="1"></circle><circle cx="17" cy="20" r="1"></circle></svg><span class="sr-only">Thêm vào giỏ hàng</span></button>` : '<a class="product-contact" href="tel:0327747337">Liên hệ</a>'}
+          </div>
         </div>
-        <button class="view-link" data-view="${escapeHtml(product.id)}">Xem chi tiết <span>→</span></button>
       </div>
     </article>`;
   }).join('');
   attachImageFallbacks(grid);
+  scheduleProductPriceFit();
   renderCart();
 }
+
+let productPriceFitFrame = 0;
+
+function fitProductPrices() {
+  productPriceFitFrame = 0;
+  grid?.querySelectorAll('.product-bottom .price').forEach(price => {
+    price.style.removeProperty('font-size');
+    const defaultSize = Number.parseFloat(getComputedStyle(price).fontSize);
+    const minSize = Math.min(defaultSize, 9);
+    if (!Number.isFinite(defaultSize) || price.scrollWidth <= price.clientWidth) return;
+
+    let low = minSize;
+    let high = defaultSize;
+    let fittedSize = minSize;
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      const candidate = (low + high) / 2;
+      price.style.fontSize = `${candidate}px`;
+      if (price.scrollWidth <= price.clientWidth) {
+        fittedSize = candidate;
+        low = candidate;
+      } else {
+        high = candidate;
+      }
+    }
+    price.style.fontSize = `${fittedSize.toFixed(2)}px`;
+  });
+}
+
+function scheduleProductPriceFit() {
+  cancelAnimationFrame(productPriceFitFrame);
+  productPriceFitFrame = requestAnimationFrame(fitProductPrices);
+}
+
+window.addEventListener('resize', scheduleProductPriceFit);
 
 function saveCart() {
   localStorage.setItem('aeon-mooncake-cart', JSON.stringify(cart));
@@ -993,6 +1083,11 @@ function updateDetailVariantSelection(product, variantId) {
   const variant = product.variants.find(item => item.id === variantId);
   if (!modal || !variant) return;
   modal.dataset.variantId = variant.id;
+  const detailArt = modal.querySelector('.detail-art');
+  if (detailArt) {
+    detailArt.innerHTML = productImageMarkup({...product, image: variant.image || product.image}, 'detail-official-image', 'detail-image-placeholder', 'Hình ảnh chính thức<br>đang cập nhật');
+    attachImageFallbacks(detailArt);
+  }
   modal.querySelectorAll('[data-detail-variant]').forEach(button => {
     const selected = button.dataset.detailVariant === variant.id;
     button.classList.toggle('is-selected', selected);
@@ -1096,6 +1191,13 @@ productSort.addEventListener('change', () => {
 });
 
 document.addEventListener('click', event => {
+  const brandDirectoryToggle = event.target.closest('[data-brand-directory-toggle]');
+  if (brandDirectoryToggle) {
+    brandDirectoryExpanded = !brandDirectoryExpanded;
+    renderBrandDirectory();
+    return;
+  }
+
   const clearCatalogFilters = event.target.closest('[data-clear-catalog-filters]');
   if (clearCatalogFilters) {
     activeBrand = '';
@@ -1205,8 +1307,13 @@ $('#openCart').onclick = () => toggleCart(true);
 $('#closeCart').onclick = () => toggleCart(false);
 $('#overlay').onclick = () => toggleCart(false);
 $('#goCheckout').onclick = () => {
+  if (!cart.length) {
+    toast('Vui lòng thêm ít nhất một sản phẩm vào giỏ trước khi tiếp tục đặt hàng.');
+    return;
+  }
+  checkoutSection.hidden = false;
   toggleCart(false);
-  $('#checkout').scrollIntoView({behavior: 'smooth'});
+  requestAnimationFrame(() => checkoutSection.scrollIntoView({behavior: 'smooth', block: 'start'}));
 };
 $('#mobileCart').onclick = () => toggleCart(true);
 $('.menu-toggle').onclick = event => {
@@ -1321,5 +1428,14 @@ window.addEventListener('storage', event => {
 });
 window.addEventListener('aeon-store-sync', refreshStorefront);
 
-refreshStorefront();
+try {
+  refreshStorefront();
+} finally {
+  // The static template stays hidden until every current storefront override is applied.
+  document.body.classList.remove('storefront-loading');
+}
+Promise.resolve(window.aeonStoreReady).finally(() => {
+  refreshStorefront();
+  document.body.classList.remove('storefront-loading');
+});
 setInterval(() => aeonStore.pull(), 5000);

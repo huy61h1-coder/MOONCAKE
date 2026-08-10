@@ -11,6 +11,7 @@
 - Quản lý khách hàng, đơn hàng và xuất Excel tổng hợp.
 - Tạo PDF A4 riêng cho từng đơn hàng.
 - Đồng bộ đơn hàng sang Google Sheet qua Apps Script.
+- Tài khoản quản trị chính có thể tạo tài khoản con, tạm khóa và cấp quyền theo từng chức năng.
 
 ## Khởi chạy
 
@@ -49,6 +50,14 @@ npm start
 
 Không ghi các giá trị thật vào mã nguồn hoặc commit tệp `.env`. Sau khi thay
 đổi tài khoản/mật khẩu, hãy khởi động lại máy chủ để áp dụng.
+
+## Tài khoản con và phân quyền
+
+Đăng nhập bằng tài khoản khai báo qua `ADMIN_USERNAME` và `ADMIN_PASSWORD`,
+sau đó vào **Tài khoản & phân quyền** để tạo tài khoản con. Có thể cấp từng
+nhóm quyền: sản phẩm & giá, nội dung/giao diện/banner, file báo giá, thương
+hiệu, hoặc khách hàng & đơn hàng. Chỉ tài khoản chính mới có thể tạo, sửa,
+tạm khóa tài khoản và phân quyền; mật khẩu tài khoản con được lưu dạng băm.
 
 Tệp `.aeon-store.seed.json` chỉ chứa danh mục và cấu hình giao diện mẫu. Dữ
 liệu khách hàng, đơn hàng và tệp tải lên được lưu cục bộ, đã bị loại khỏi Git

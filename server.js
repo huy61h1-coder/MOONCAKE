@@ -22,6 +22,15 @@ const googleSheetWebAppUrl = String(process.env.GOOGLE_SHEET_WEB_APP_URL || '').
 const adminSessionCookie = 'aeon_admin_session';
 const adminSessionTtlSeconds = 12 * 60 * 60;
 const adminSessions = new Map();
+const adminAccountsStateKey = 'aeon-admin-users';
+const adminPermissionDefinitions = [
+  {id:'products', label:'Sản phẩm & giá'},
+  {id:'interface', label:'Nội dung, giao diện & banner'},
+  {id:'quotes', label:'File báo giá'},
+  {id:'brands', label:'Thương hiệu'},
+  {id:'customers', label:'Khách hàng & đơn hàng'}
+];
+const adminPermissionIds = new Set(adminPermissionDefinitions.map(item => item.id));
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.ico':'image/x-icon','.pdf':'application/pdf','.csv':'text/csv; charset=utf-8','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.xls':'application/vnd.ms-excel'};
 const imageExtensions = {'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/gif':'.gif','image/svg+xml':'.svg'};
 const uploadImageTypes = new Set(Object.keys(imageExtensions));
@@ -41,6 +50,88 @@ function secureTextEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function adminUsernameMatches(value) {
+  return secureTextEqual(
+    String(value ?? '').trim().toLocaleLowerCase('vi-VN'),
+    adminUsername.toLocaleLowerCase('vi-VN')
+  );
+}
+
+function normaliseSubAdminUsername(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function cleanSubAdminDisplayName(value, fallback = '') {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 80) || fallback;
+}
+
+function cleanSubAdminPermissions(value) {
+  const input = Array.isArray(value) ? value : [];
+  return [...new Set(input.map(item => String(item ?? '').trim()).filter(item => adminPermissionIds.has(item)))];
+}
+
+function ownerPrincipal() {
+  return {
+    accountId: 'owner',
+    username: adminUsername,
+    displayName: 'Quản trị chính',
+    isOwner: true,
+    permissions: [...adminPermissionIds]
+  };
+}
+
+function publicAdminPrincipal(principal) {
+  if (!principal) return null;
+  return {
+    username: principal.username,
+    displayName: principal.displayName,
+    isOwner: Boolean(principal.isOwner),
+    permissions: [...new Set(principal.permissions || [])]
+  };
+}
+
+function hashSubAdminPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(String(password), salt, 64);
+  return `scrypt$${salt.toString('base64url')}$${hash.toString('base64url')}`;
+}
+
+function verifySubAdminPassword(password, encoded) {
+  const [algorithm, saltText, hashText] = String(encoded || '').split('$');
+  if (algorithm !== 'scrypt' || !saltText || !hashText) return false;
+  try {
+    const expected = Buffer.from(hashText, 'base64url');
+    const actual = crypto.scryptSync(String(password), Buffer.from(saltText, 'base64url'), expected.length);
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
+}
+
+function subAdminAccounts(state) {
+  return Array.isArray(state?.[adminAccountsStateKey]) ? state[adminAccountsStateKey] : [];
+}
+
+function publicSubAdminAccount(account) {
+  return {
+    id: String(account?.id || ''),
+    username: String(account?.username || ''),
+    displayName: cleanSubAdminDisplayName(account?.displayName, String(account?.username || '')),
+    permissions: cleanSubAdminPermissions(account?.permissions),
+    active: account?.active !== false,
+    createdAt: String(account?.createdAt || ''),
+    updatedAt: String(account?.updatedAt || ''),
+    isOwner: false
+  };
+}
+
+function accountDirectory(state) {
+  return [
+    {...ownerPrincipal(), id:'owner', active:true, createdAt:'', updatedAt:''},
+    ...subAdminAccounts(state).map(publicSubAdminAccount)
+  ];
+}
+
 function requestCookies(request) {
   return String(request.headers.cookie || '').split(';').reduce((cookies, pair) => {
     const separator = pair.indexOf('=');
@@ -52,20 +143,33 @@ function requestCookies(request) {
   }, {});
 }
 
-function adminSessionToken(request) {
+function adminSession(request) {
   const token = requestCookies(request)[adminSessionCookie] || '';
-  const expiresAt = adminSessions.get(token);
-  if (!token || !expiresAt) return '';
-  if (expiresAt <= Date.now()) {
+  const session = adminSessions.get(token);
+  if (!token || !session) return null;
+  if (session.expiresAt <= Date.now()) {
     adminSessions.delete(token);
-    return '';
+    return null;
   }
-  adminSessions.set(token, Date.now() + adminSessionTtlSeconds * 1000);
-  return token;
+  session.expiresAt = Date.now() + adminSessionTtlSeconds * 1000;
+  adminSessions.set(token, session);
+  return {token, principal: publicAdminPrincipal(session)};
+}
+
+function adminSessionToken(request) {
+  return adminSession(request)?.token || '';
+}
+
+function adminPrincipal(request) {
+  return adminSession(request)?.principal || null;
 }
 
 function isAdminRequest(request) {
-  return Boolean(adminSessionToken(request));
+  return Boolean(adminPrincipal(request));
+}
+
+function principalHasPermission(principal, permission) {
+  return Boolean(principal && (principal.isOwner || principal.permissions.includes(permission)));
 }
 
 function adminCookie(request, token, maxAge = adminSessionTtlSeconds) {
@@ -79,6 +183,32 @@ function requireAdmin(request, response) {
   json(response, 401, {error:'Phiên quản trị đã hết hạn. Vui lòng đăng nhập lại.'});
   return false;
 }
+
+function requirePermission(request, response, permission) {
+  const principal = adminPrincipal(request);
+  if (!principal) {
+    json(response, 401, {error:'Phiên quản trị đã hết hạn. Vui lòng đăng nhập lại.'});
+    return null;
+  }
+  if (!principalHasPermission(principal, permission)) {
+    json(response, 403, {error:`Tài khoản chưa được cấp quyền “${adminPermissionDefinitions.find(item => item.id === permission)?.label || permission}”.`});
+    return null;
+  }
+  return principal;
+}
+
+function requireOwner(request, response) {
+  const principal = adminPrincipal(request);
+  if (!principal) {
+    json(response, 401, {error:'Phiên quản trị đã hết hạn. Vui lòng đăng nhập lại.'});
+    return null;
+  }
+  if (!principal.isOwner) {
+    json(response, 403, {error:'Chỉ tài khoản quản trị chính mới được quản lý tài khoản và phân quyền.'});
+    return null;
+  }
+  return principal;
+}
 function readState() {
   try {
     return JSON.parse(fs.readFileSync(statePath, 'utf8'));
@@ -91,6 +221,175 @@ function readState() {
   }
 }
 function writeState(state) { const temporary = `${statePath}.tmp`; fs.writeFileSync(temporary, JSON.stringify(state, null, 2)); fs.renameSync(temporary, statePath); }
+
+function publicStorefrontState(state) {
+  const visible = {};
+  ['aeon-products', 'aeon-ui', 'aeon-layout', 'aeon-brands'].forEach(key => {
+    if (Object.hasOwn(state || {}, key)) visible[key] = state[key];
+  });
+  return visible;
+}
+
+function stateForRequest(request) {
+  const state = readState();
+  const visible = publicStorefrontState(state);
+  const principal = adminPrincipal(request);
+  if (principalHasPermission(principal, 'customers')) {
+    ['aeon-customers', 'aeon-orders'].forEach(key => {
+      if (Object.hasOwn(state, key)) visible[key] = state[key];
+    });
+  }
+  return visible;
+}
+
+function valuesMatch(left, right) {
+  if (Object.is(left, right)) return true;
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  if (Array.isArray(left) !== Array.isArray(right)) return false;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every(key => Object.hasOwn(right, key) && valuesMatch(left[key], right[key]));
+}
+
+function quoteFileOnlyUiChange(previous, next) {
+  if (!next || typeof next !== 'object' || Array.isArray(next)) return false;
+  const allowedKeys = new Set(['quoteExcelUrl', 'quotePdfUrl']);
+  const previousUi = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {};
+  const keys = new Set([...Object.keys(previousUi), ...Object.keys(next)]);
+  return [...keys].every(key => allowedKeys.has(key) || valuesMatch(previousUi[key], next[key]));
+}
+
+function revokeSubAdminSessions(accountId) {
+  for (const [token, session] of adminSessions.entries()) {
+    if (session.accountId === accountId) adminSessions.delete(token);
+  }
+}
+
+function escapeHtmlAttribute(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[character]));
+}
+
+function requestOrigin(request) {
+  const forwardedProtocol = String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  const protocol = forwardedProtocol === 'https' ? 'https' : 'http';
+  const hostHeader = String(request.headers['x-forwarded-host'] || request.headers.host || `127.0.0.1:${port}`).split(',')[0].trim();
+  try {
+    return new URL(`${protocol}://${hostHeader}`).origin;
+  } catch {
+    return `http://127.0.0.1:${port}`;
+  }
+}
+
+function socialPreviewVersion(imagePath) {
+  if (imagePath.startsWith('/')) {
+    const localPath = path.resolve(root, `.${imagePath}`);
+    if (localPath.startsWith(`${root}${path.sep}`)) {
+      try { return Math.round(fs.statSync(localPath).mtimeMs).toString(36); }
+      catch { /* Use the image path below when the local file has not been created yet. */ }
+    }
+  }
+  return crypto.createHash('sha1').update(imagePath).digest('hex').slice(0, 12);
+}
+
+function currentHeroImage(state) {
+  const configuredImage = String(state?.['aeon-ui']?.heroImage || '').trim();
+  return /^(?:https?:\/\/|\/)/i.test(configuredImage) ? configuredImage : '/assets/mooncake-hero.png';
+}
+
+function versionedHeroImage(imagePath) {
+  try {
+    const imageUrl = new URL(imagePath, 'http://aeon.local');
+    imageUrl.searchParams.set('v', socialPreviewVersion(imagePath));
+    return /^https?:\/\//i.test(imagePath) ? imageUrl.href : `${imageUrl.pathname}${imageUrl.search}`;
+  } catch {
+    return imagePath;
+  }
+}
+
+function socialPreviewMeta(request, state) {
+  const ui = state?.['aeon-ui'] || {};
+  const heroImage = versionedHeroImage(currentHeroImage(state));
+  let imageUrl;
+  try {
+    imageUrl = new URL(heroImage, requestOrigin(request));
+  } catch {
+    return '';
+  }
+  const titleText = String(ui.title || 'Trọn vị đoàn viên').replace(/\s+/g, ' ').trim();
+  const title = `AEON Mooncake 2026 | ${titleText}`;
+  const description = String(ui.intro || 'Bộ sưu tập bánh Trung Thu AEON 2026 — món quà trọn vẹn cho mùa đoàn viên.').replace(/\s+/g, ' ').trim();
+  const pageUrl = `${requestOrigin(request)}/`;
+  return `<meta property="og:type" content="website" />\n  <meta property="og:locale" content="vi_VN" />\n  <meta property="og:title" content="${escapeHtmlAttribute(title)}" />\n  <meta property="og:description" content="${escapeHtmlAttribute(description)}" />\n  <meta property="og:url" content="${escapeHtmlAttribute(pageUrl)}" />\n  <meta property="og:image" content="${escapeHtmlAttribute(imageUrl.href)}" />\n  <meta property="og:image:alt" content="${escapeHtmlAttribute(title)}" />\n  <meta name="twitter:card" content="summary_large_image" />\n  <meta name="twitter:title" content="${escapeHtmlAttribute(title)}" />\n  <meta name="twitter:description" content="${escapeHtmlAttribute(description)}" />\n  <meta name="twitter:image" content="${escapeHtmlAttribute(imageUrl.href)}" />`;
+}
+
+function publicStoreStateMarkup(state) {
+  const publicState = {};
+  ['aeon-products', 'aeon-ui', 'aeon-layout', 'aeon-brands'].forEach(key => {
+    if (Object.hasOwn(state, key)) publicState[key] = state[key];
+  });
+  const encoded = JSON.stringify(publicState)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+  return `<script id="aeon-public-state" type="application/json">${encoded}</script>`;
+}
+
+function layoutNumber(value, min, max, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function layoutColor(value, fallback) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+}
+
+function initialLayoutStyle(state) {
+  const layout = state?.['aeon-layout'] || {};
+  const headerHeight = layoutNumber(layout.headerHeight, 10, 112, 82);
+  const heroHeight = layoutNumber(layout.heroHeight, 0, 700, 0);
+  const sectionSpacing = layoutNumber(layout.sectionSpacing, 0, 170, 0);
+  const productImageHeight = layoutNumber(layout.productImageHeight, 0, 480, 0);
+  const productColumns = layoutNumber(layout.productColumns, 0, 6, 0);
+  const productColumnsMobile = layoutNumber(layout.productColumnsMobile, 0, 2, 0);
+  const heroTitleSize = layoutNumber(layout.heroTitleSize, 10, 90, 68);
+  const heroIntroSize = layoutNumber(layout.heroIntroSize, 12, 22, 15);
+  const productTitleSize = layoutNumber(layout.productTitleSize, 12, 24, 15);
+  const logoSize = layoutNumber(layout.logoSize, 18, 48, 25);
+  const bannerRatio = layoutNumber(layout.bannerAspectRatio, 1.5, 4, 21 / 9);
+  const desktopColumns = [1, 2, 3, 4, 5, 6].includes(productColumns)
+    ? `.products:not([data-product-count="1"]):not([data-product-count="2"]){grid-template-columns:repeat(${productColumns},minmax(0,1fr))!important}`
+    : '';
+  const mobileColumns = [1, 2].includes(productColumnsMobile)
+    ? `.products:not([data-product-count="1"]){grid-template-columns:${productColumnsMobile === 1 ? 'minmax(0,1fr)' : 'repeat(2,minmax(0,1fr))'}!important}`
+    : '';
+  const fontFamily = ({
+    'be-vietnam-pro': "'Be Vietnam Pro',sans-serif",
+    'playfair-display': "'Playfair Display',Georgia,serif",
+    arial: 'Arial,Helvetica,sans-serif',
+    georgia: "Georgia,'Times New Roman',serif"
+  })[String(layout.fontFamily || '')] || '';
+  const fontRule = fontFamily ? `body,body button,body input,body textarea,body select,body h1,body h2,body h3,body h4,body h5,body h6{font-family:${fontFamily}!important}` : '';
+  const sectionRule = sectionSpacing ? `.collection,.checkout{padding-top:${sectionSpacing}px!important;padding-bottom:${sectionSpacing}px!important}` : '';
+  const mediaRule = productImageHeight ? `.product-media{height:${productImageHeight}px!important;aspect-ratio:auto!important}` : '';
+  const heroHeightRule = heroHeight ? `.hero{min-height:${heroHeight}px!important}` : '';
+  const mobileHeader = Math.min(84, Math.max(10, headerHeight * .75));
+  return `<style id="aeon-initial-layout">body.storefront-loading>*{visibility:hidden!important}:root{--red:${layoutColor(layout.accentColor, '#a9163a')};--wine:${layoutColor(layout.accentDarkColor, '#71162b')};--cream:${layoutColor(layout.pageBackgroundColor, '#fbf8f1')};--paper:${layoutColor(layout.sectionBackgroundColor, '#f2ede2')};--ink:${layoutColor(layout.textColor, '#242224')};--admin-header-height:${headerHeight}px;--admin-hero-height:${heroHeight}px;--admin-section-spacing:${sectionSpacing}px;--admin-product-media-height:${productImageHeight}px;--admin-logo-size:${logoSize}px;--admin-hero-title-size:${heroTitleSize}px;--admin-hero-intro-size:${heroIntroSize}px;--admin-product-title-size:${productTitleSize}px;--admin-mobile-hero-title-size:${Math.max(10, heroTitleSize * .8)}px;--admin-mobile-product-title-size:${Math.max(12, productTitleSize * .9)}px;--admin-mobile-single-product-title-size:${Math.max(13, productTitleSize * .94)}px;--admin-mobile-compact-product-title-size:${Math.max(10, productTitleSize * .78)}px;--admin-banner-ratio:${bannerRatio};--admin-banner-width-desktop:${520 * bannerRatio / (21 / 9)}px}${fontRule}${heroHeightRule}${sectionRule}${mediaRule}@media(min-width:761px){.site-header{height:${headerHeight}px!important}.site-header nav{top:${headerHeight}px!important}.brand{font-size:${logoSize}px!important}.hero h1{font-size:${heroTitleSize}px!important}.hero .intro{font-size:${heroIntroSize}px!important}.product-info h3{font-size:${productTitleSize}px!important}${desktopColumns}}@media(max-width:760px){.site-header{height:${mobileHeader}px!important}.site-header nav{top:${mobileHeader}px!important}.brand{font-size:${logoSize * .88}px!important}.hero h1{font-size:${Math.max(10, heroTitleSize * .8)}px!important}.hero .intro{font-size:${heroIntroSize}px!important}.product-info h3{font-size:${Math.max(12, productTitleSize * .9)}px!important}${mobileColumns}}</style>`;
+}
+
+function storefrontHtml(request) {
+  const state = readState();
+  const template = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const heroImage = escapeHtmlAttribute(versionedHeroImage(currentHeroImage(state)));
+  return template
+    .replace('<!-- SOCIAL_PREVIEW -->', socialPreviewMeta(request, state))
+    .replace('<!-- PUBLIC_STORE_STATE -->', publicStoreStateMarkup(state))
+    .replace('<!-- INITIAL_LAYOUT -->', initialLayoutStyle(state))
+    .replace('src="assets/mooncake-hero.png"', `src="${heroImage}"`);
+}
 
 function spreadsheetText(value) {
   const text = String(value ?? '').replace(/\r\n/g, '\n');
@@ -418,10 +717,11 @@ const productWorkbookHeaders = [
   'Tên phân loại',
   'Giá trị phân loại',
   'Mã phân loại',
-  'Giá phân loại'
+  'Giá phân loại',
+  'Ảnh phân loại (URL)'
 ];
 
-const productWorkbookWidths = [20, 38, 16, 26, 20, 18, 24, 38, 46, 58, 46, 20, 24, 20, 18];
+const productWorkbookWidths = [20, 38, 16, 26, 20, 18, 24, 38, 46, 58, 46, 20, 24, 20, 18, 46];
 
 function productWorkbookRow(product, variant = null) {
   return {
@@ -439,7 +739,8 @@ function productWorkbookRow(product, variant = null) {
     'Tên phân loại': spreadsheetText(product?.variantLabel || (variant ? 'Phân loại' : '')),
     'Giá trị phân loại': spreadsheetText(variant?.name),
     'Mã phân loại': spreadsheetText(variant?.sku),
-    'Giá phân loại': variant ? spreadsheetNumber(variant.price) : ''
+    'Giá phân loại': variant ? spreadsheetNumber(variant.price) : '',
+    'Ảnh phân loại (URL)': spreadsheetText(variant?.image)
   };
 }
 
@@ -471,7 +772,8 @@ function productWorkbookGuide() {
     {'Cột': 'Tên phân loại', 'Yêu cầu': 'Tên nhóm lựa chọn; lặp lại trên các dòng của cùng sản phẩm', 'Ví dụ': 'Màu sắc'},
     {'Cột': 'Giá trị phân loại', 'Yêu cầu': 'Mỗi lựa chọn nằm trên một dòng riêng', 'Ví dụ': 'Đỏ'},
     {'Cột': 'Mã phân loại', 'Yêu cầu': 'Không bắt buộc nhưng không được trùng trong cùng sản phẩm', 'Ví dụ': 'AM-2026-01-RED'},
-    {'Cột': 'Giá phân loại', 'Yêu cầu': 'Bắt buộc khi có Giá trị phân loại', 'Ví dụ': '350000'}
+    {'Cột': 'Giá phân loại', 'Yêu cầu': 'Bắt buộc khi có Giá trị phân loại', 'Ví dụ': '350000'},
+    {'Cột': 'Ảnh phân loại (URL)', 'Yêu cầu': 'Không bắt buộc; để trống sẽ dùng Ảnh (URL) của sản phẩm', 'Ví dụ': 'https://example.com/mooncake-red.jpg'}
   ];
   return worksheetFromRows(guideHeaders, guideRows, [28, 72, 52]);
 }
@@ -716,23 +1018,42 @@ http.createServer(async (request, response) => {
   catch { response.writeHead(400); return response.end('Bad request'); }
 
   if (request.method === 'GET' && pathname === '/api/admin/session') {
-    return json(response, 200, {authenticated:isAdminRequest(request), configured:configuredAdmin()});
+    const principal = adminPrincipal(request);
+    return json(response, 200, {authenticated:Boolean(principal), configured:configuredAdmin(), user:publicAdminPrincipal(principal)});
   }
   if (request.method === 'POST' && pathname === '/api/admin/login') {
     if (!configuredAdmin()) return json(response, 503, {error:'Máy chủ chưa cấu hình ADMIN_USERNAME và ADMIN_PASSWORD.'});
     try {
       const {username, password} = JSON.parse((await readBody(request, 32 * 1024)).toString('utf8'));
-      if (!secureTextEqual(String(username || '').trim(), adminUsername) || !secureTextEqual(password, adminPassword)) {
+      let principal = null;
+      if (adminUsernameMatches(username) && secureTextEqual(password, adminPassword)) {
+        principal = ownerPrincipal();
+      } else {
+        const account = subAdminAccounts(readState()).find(item => (
+          item?.active !== false
+          && secureTextEqual(normaliseSubAdminUsername(item?.username), normaliseSubAdminUsername(username))
+        ));
+        if (account && verifySubAdminPassword(password, account.passwordHash)) {
+          principal = {
+            accountId: String(account.id),
+            username: normaliseSubAdminUsername(account.username),
+            displayName: cleanSubAdminDisplayName(account.displayName, account.username),
+            isOwner: false,
+            permissions: cleanSubAdminPermissions(account.permissions)
+          };
+        }
+      }
+      if (!principal) {
         return json(response, 401, {error:'Tài khoản hoặc mật khẩu chưa đúng.'});
       }
       const token = crypto.randomBytes(32).toString('base64url');
-      adminSessions.set(token, Date.now() + adminSessionTtlSeconds * 1000);
+      adminSessions.set(token, {...principal, expiresAt: Date.now() + adminSessionTtlSeconds * 1000});
       response.writeHead(200, {
         'Content-Type':'application/json; charset=utf-8',
         'Cache-Control':'no-store',
         'Set-Cookie':adminCookie(request, token)
       });
-      return response.end(JSON.stringify({ok:true}));
+      return response.end(JSON.stringify({ok:true, user:publicAdminPrincipal(principal)}));
     } catch (error) {
       return json(response, 400, {error:error.message || 'Không thể đăng nhập.'});
     }
@@ -748,9 +1069,78 @@ http.createServer(async (request, response) => {
     return response.end(JSON.stringify({ok:true}));
   }
 
-  if (request.method === 'GET' && pathname === '/api/state') return json(response, 200, readState());
+  if (request.method === 'GET' && pathname === '/api/admin/accounts') {
+    if (!requireOwner(request, response)) return;
+    return json(response, 200, {permissions:adminPermissionDefinitions, accounts:accountDirectory(readState())});
+  }
+  if (request.method === 'POST' && pathname === '/api/admin/accounts') {
+    if (!requireOwner(request, response)) return;
+    try {
+      const payload = JSON.parse((await readBody(request, 32 * 1024)).toString('utf8'));
+      const action = String(payload?.action || '').trim();
+      const state = readState();
+      const accounts = subAdminAccounts(state).map(account => ({...account}));
+      const now = new Date().toISOString();
+
+      if (action === 'create') {
+        const username = normaliseSubAdminUsername(payload.username);
+        const displayName = cleanSubAdminDisplayName(payload.displayName, username);
+        const password = String(payload.password || '');
+        const permissions = cleanSubAdminPermissions(payload.permissions);
+        if (!/^[a-z0-9._-]{3,40}$/.test(username)) return json(response, 400, {error:'Tài khoản chỉ gồm chữ thường, số, dấu chấm, gạch dưới hoặc gạch ngang (3–40 ký tự).'});
+        if (adminUsernameMatches(username) || accounts.some(account => normaliseSubAdminUsername(account.username) === username)) return json(response, 409, {error:'Tên tài khoản này đã tồn tại.'});
+        if (password.length < 8 || password.length > 128) return json(response, 400, {error:'Mật khẩu tài khoản con cần từ 8 đến 128 ký tự.'});
+        if (!permissions.length) return json(response, 400, {error:'Hãy cấp ít nhất một quyền sử dụng cho tài khoản con.'});
+        const account = {
+          id: `sub-${crypto.randomBytes(12).toString('hex')}`,
+          username,
+          displayName,
+          passwordHash: hashSubAdminPassword(password),
+          permissions,
+          active: true,
+          createdAt: now,
+          updatedAt: now
+        };
+        accounts.push(account);
+        state[adminAccountsStateKey] = accounts;
+        writeState(state);
+        return json(response, 201, {ok:true, account:publicSubAdminAccount(account)});
+      }
+
+      if (action === 'update') {
+        const accountId = String(payload.id || '');
+        const index = accounts.findIndex(account => String(account.id) === accountId);
+        if (index < 0) return json(response, 404, {error:'Không tìm thấy tài khoản con.'});
+        const account = accounts[index];
+        const displayName = cleanSubAdminDisplayName(payload.displayName, account.displayName || account.username);
+        const permissions = cleanSubAdminPermissions(payload.permissions);
+        const password = String(payload.password || '');
+        if (!permissions.length) return json(response, 400, {error:'Hãy cấp ít nhất một quyền sử dụng cho tài khoản con.'});
+        if (password && (password.length < 8 || password.length > 128)) return json(response, 400, {error:'Mật khẩu mới cần từ 8 đến 128 ký tự.'});
+        const updated = {
+          ...account,
+          displayName,
+          permissions,
+          active: payload.active !== false,
+          updatedAt: now
+        };
+        if (password) updated.passwordHash = hashSubAdminPassword(password);
+        accounts[index] = updated;
+        state[adminAccountsStateKey] = accounts;
+        writeState(state);
+        revokeSubAdminSessions(accountId);
+        return json(response, 200, {ok:true, account:publicSubAdminAccount(updated)});
+      }
+
+      return json(response, 400, {error:'Thao tác tài khoản không hợp lệ.'});
+    } catch (error) {
+      return json(response, 400, {error:error.message || 'Không thể lưu tài khoản.'});
+    }
+  }
+
+  if (request.method === 'GET' && pathname === '/api/state') return json(response, 200, stateForRequest(request));
   if (request.method === 'GET' && pathname === '/api/export/customers.xlsx') {
-    if (!requireAdmin(request, response)) return;
+    if (!requirePermission(request, response, 'customers')) return;
     try {
       const workbook = customerWorkbook(readState());
       response.writeHead(200, {
@@ -766,7 +1156,7 @@ http.createServer(async (request, response) => {
   }
   const orderPdfMatch = request.method === 'GET' ? /^\/api\/orders\/([^/]+)\.pdf$/i.exec(pathname) : null;
   if (orderPdfMatch) {
-    if (!requireAdmin(request, response)) return;
+    if (!requirePermission(request, response, 'customers')) return;
     try {
       const orderCode = orderPdfMatch[1];
       const pdf = await orderPdfBuffer(readState(), orderCode);
@@ -815,8 +1205,30 @@ http.createServer(async (request, response) => {
       const {key, value} = JSON.parse((await readBody(request)).toString('utf8'));
       const allowedKeys = new Set(['aeon-products','aeon-ui','aeon-layout','aeon-brands','aeon-customers','aeon-orders']);
       if (!allowedKeys.has(key)) return json(response, 400, {error:'Không thể lưu loại dữ liệu này.'});
-      if (!['aeon-customers','aeon-orders'].includes(key) && !requireAdmin(request, response)) return;
-      const state = readState(); state[key] = value; writeState(state); return json(response, 200, {ok:true});
+      const state = readState();
+      if (key === 'aeon-products' && !requirePermission(request, response, 'products')) return;
+      if (key === 'aeon-layout' && !requirePermission(request, response, 'interface')) return;
+      if (key === 'aeon-brands' && !requirePermission(request, response, 'brands')) return;
+      if (key === 'aeon-ui') {
+        const principal = adminPrincipal(request);
+        if (!principal) {
+          json(response, 401, {error:'Phiên quản trị đã hết hạn. Vui lòng đăng nhập lại.'});
+          return;
+        }
+        if (!principalHasPermission(principal, 'interface')) {
+          if (!principalHasPermission(principal, 'quotes')) {
+            json(response, 403, {error:'Tài khoản chưa được cấp quyền nội dung giao diện hoặc file báo giá.'});
+            return;
+          }
+          if (!quoteFileOnlyUiChange(state[key], value)) {
+            json(response, 403, {error:'Tài khoản này chỉ được phép thay đổi file báo giá.'});
+            return;
+          }
+        }
+      }
+      state[key] = value;
+      writeState(state);
+      return json(response, 200, {ok:true});
     } catch (error) { return json(response, 400, {error:error.message || 'Không thể lưu dữ liệu.'}); }
   }
 
@@ -832,7 +1244,15 @@ http.createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && pathname === '/api/upload') {
-    if (!requireAdmin(request, response)) return;
+    const principal = adminPrincipal(request);
+    if (!principal) {
+      json(response, 401, {error:'Phiên quản trị đã hết hạn. Vui lòng đăng nhập lại.'});
+      return;
+    }
+    if (!principalHasPermission(principal, 'products') && !principalHasPermission(principal, 'interface')) {
+      json(response, 403, {error:'Tài khoản chưa được cấp quyền tải ảnh sản phẩm hoặc giao diện.'});
+      return;
+    }
     try {
       const body = JSON.parse((await readBody(request)).toString('utf8'));
       const match = /^data:(image\/(?:png|jpeg|webp|gif)|image\/svg\+xml);base64,([A-Za-z0-9+/=]+)$/.exec(body.dataUrl || '');
@@ -849,7 +1269,7 @@ http.createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && pathname === '/api/upload-quote') {
-    if (!requireAdmin(request, response)) return;
+    if (!requirePermission(request, response, 'quotes')) return;
     try {
       const body = JSON.parse((await readBody(request, maxQuoteUploadBytes)).toString('utf8'));
       const filename = path.basename(String(body.filename || 'bao-gia'));
@@ -871,7 +1291,7 @@ http.createServer(async (request, response) => {
   }
 
   if (request.method === 'POST' && pathname === '/api/import-products') {
-    if (!requireAdmin(request, response)) return;
+    if (!requirePermission(request, response, 'products')) return;
     try {
       const body = JSON.parse((await readBody(request, maxImportBytes)).toString('utf8'));
       const filename = path.basename(String(body.filename || 'catalogue'));
@@ -890,6 +1310,16 @@ http.createServer(async (request, response) => {
   if (requested === '/.aeon-store.json' || requested.startsWith('/.aeon-store.json.')) { response.writeHead(403); return response.end('Forbidden'); }
   const filePath = path.resolve(root, `.${requested}`);
   if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) { response.writeHead(403); return response.end('Forbidden'); }
+  if (request.method === 'GET' && requested === '/index.html') {
+    try {
+      const content = storefrontHtml(request);
+      response.writeHead(200, {'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
+      return response.end(content);
+    } catch {
+      response.writeHead(500, {'Content-Type':'text/plain; charset=utf-8'});
+      return response.end('Server error');
+    }
+  }
   fs.readFile(filePath, (error, content) => {
     if (error) { response.writeHead(error.code === 'ENOENT' ? 404 : 500, {'Content-Type':'text/plain; charset=utf-8'}); return response.end(error.code === 'ENOENT' ? 'Not found' : 'Server error'); }
     response.writeHead(200, {'Content-Type':types[path.extname(filePath).toLowerCase()] || 'application/octet-stream','Cache-Control':'no-store'});

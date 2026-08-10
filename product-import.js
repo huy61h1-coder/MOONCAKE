@@ -328,6 +328,7 @@ function headerField(value) {
   if (!key) return '';
   if (/(^| )(id he thong|id san pham|product id|system id)( |$)/.test(key)) return 'id';
   if (/(ten phan loai|nhom phan loai|variant label|variant group|option name)/.test(key)) return 'variantLabel';
+  if (/(anh phan loai|hinh anh phan loai|variant image|option image)/.test(key)) return 'variantImage';
   if (/(ma phan loai|ma bien the|variant sku|option sku)/.test(key)) return 'variantSku';
   if (/(gia phan loai|gia bien the|variant price|option price)/.test(key)) return 'variantPrice';
   if (/(gia tri phan loai|phan loai|bien the|lua chon|variant value|option value)/.test(key)) return 'variantName';
@@ -384,7 +385,7 @@ function candidatesFromSpreadsheet(buffer, filename = '') {
       warnings.push(`Không tìm thấy cột Tên sản phẩm/Giá ở sheet “${sheetName}”.`);
       return;
     }
-    const hasVariantColumns = header.fields.some(field => ['variantLabel', 'variantName', 'variantSku', 'variantPrice'].includes(field));
+    const hasVariantColumns = header.fields.some(field => ['variantLabel', 'variantName', 'variantImage', 'variantSku', 'variantPrice'].includes(field));
 
     rows.slice(header.index + 1).forEach(row => {
       if (candidates.length >= MAX_CANDIDATES || !Array.isArray(row)) return;
@@ -395,6 +396,7 @@ function candidatesFromSpreadsheet(buffer, filename = '') {
       const name = tidyName(record.name);
       const price = parsePrice(record.price);
       const variantName = cleanText(record.variantName || '', 120);
+      const variantImage = cleanText(record.variantImage || '', 600);
       const variantSku = cleanText(record.variantSku || '', 100);
       const variantPrice = parsePrice(record.variantPrice);
       const effectivePrice = price || variantPrice;
@@ -403,7 +405,7 @@ function candidatesFromSpreadsheet(buffer, filename = '') {
 
       const rowWarnings = [];
       if (!effectivePrice) rowWarnings.push('Chưa nhận diện được giá bán hoặc giá phân loại. Hãy nhập giá trước khi lưu.');
-      if (!variantName && (variantSku || variantPrice)) rowWarnings.push('Dòng có mã/giá phân loại nhưng chưa có Giá trị phân loại.');
+      if (!variantName && (variantImage || variantSku || variantPrice)) rowWarnings.push('Dòng có thông tin phân loại nhưng chưa có Giá trị phân loại.');
 
       const systemId = cleanText(record.id || '', 100);
       const sku = cleanText(record.sku || '', 100);
@@ -457,7 +459,8 @@ function candidatesFromSpreadsheet(buffer, filename = '') {
             id: cleanText(variantSku || variantName, 100).replace(/\s+/g, '-'),
             name: variantName,
             price: variantPrice || price || 0,
-            sku: variantSku
+            sku: variantSku,
+            image: variantImage
           });
         }
       }

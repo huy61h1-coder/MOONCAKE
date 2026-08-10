@@ -1,0 +1,17 @@
+/* Color bridge: the admin uses the same saved layout palette as the storefront. */
+.admin-body{background:linear-gradient(135deg,var(--paper) 0%,var(--cream) 49%,var(--admin-page-tint,var(--paper)) 100%);color:var(--ink)}
+.admin-body:before{background:radial-gradient(circle,color-mix(in srgb,var(--red) 13%,transparent),transparent 68%)}
+.admin-sidebar{background:linear-gradient(155deg,var(--wine) 0%,var(--admin-sidebar-deep,var(--wine)) 100%)}
+.admin-sidebar .brand small{color:color-mix(in srgb,var(--cream) 84%,white)}
+.admin-sidebar nav button:before{background:color-mix(in srgb,var(--cream) 72%,var(--red))}.admin-sidebar nav button.active{background:var(--red)}
+.admin-sidebar nav button.active:before{background:var(--cream)}.admin-sidebar nav button:hover{border-color:color-mix(in srgb,var(--cream) 30%,transparent)}
+.admin-content>header{background:linear-gradient(to bottom,color-mix(in srgb,var(--cream) 97%,transparent) 72%,transparent)}
+.stats article,.admin-card{background:var(--admin-surface,#fff);border-color:var(--admin-line,#ded6c9)}.stats article:nth-child(2):before{background:var(--paper)}.stats article:nth-child(3):before{background:var(--wine)}.stats article:nth-child(4):before{background:color-mix(in srgb,var(--red) 55%,var(--paper))}
+.admin-toolbar,.quick-product-row,.import-candidate,.quote-file-card,.brand-settings-group,.account-permissions,.account-permission-option{background:var(--admin-surface-muted,#fbf8f1);border-color:var(--admin-line,#ded6c9)!important}
+.admin-content input:not([type="file"]):not([type="color"]):not([type="range"]):not([type="checkbox"]),.admin-content textarea,.admin-content select{background:color-mix(in srgb,var(--cream) 22%,white)!important;border-color:var(--admin-line,#ded6c9)!important;color:var(--ink)}
+.admin-content input[readonly]{background:var(--admin-surface-muted,#f2ede2)!important;color:color-mix(in srgb,var(--ink) 70%,var(--cream))}.admin-content input:focus,.admin-content textarea:focus,.admin-content select:focus{border-color:var(--red)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 14%,transparent)}
+.secondary-button{border-color:var(--admin-accent-border,#d9c7bc);background:var(--admin-surface,#fff);color:var(--wine)}.secondary-button:hover{border-color:var(--red);background:var(--admin-accent-soft,#fff1f3);color:var(--red)}
+.danger{border-color:var(--admin-accent-border,#ead0d6);background:var(--admin-accent-soft,#fff8f8);color:var(--wine)}.danger:hover{border-color:var(--red);background:color-mix(in srgb,var(--red) 12%,var(--cream))}
+.quick-product-manager,.customer-data-card{border-top-color:var(--red)}.import-products,.account-editor{border-top-color:var(--wine)}.account-directory{border-top-color:var(--red)}.quick-product-status{background:var(--admin-surface-muted);border-left-color:var(--red)}
+.table-row:hover,.quick-product-row:hover{background:color-mix(in srgb,var(--cream) 82%,white)}.edit-product{border-color:var(--admin-accent-border);background:var(--admin-accent-soft);color:var(--wine)}.edit-product:hover{border-color:var(--red);background:color-mix(in srgb,var(--red) 10%,var(--cream))}
+.customer-order-card,.sheet-sync-stats span{border-color:var(--admin-line);background:var(--admin-surface-muted)}.order-pdf-button{background:var(--wine)}.order-pdf-button:hover{background:var(--red)}.dashboard-shortcut-list button{border-color:var(--admin-line);background:var(--admin-surface-muted)}.dashboard-shortcut-list button:hover{border-color:var(--red)}.dashboard-shortcut-list span{color:var(--red)}

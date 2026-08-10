@@ -1,0 +1,92 @@
+/* Desktop and touch-layout refinements for the admin workspace. */
+.admin-app{display:block!important}
+.admin-content,#adminPanel{min-width:0}.admin-content>header,#adminPanel{width:100%}
+.dashboard-shortcuts{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);gap:26px;align-items:center;margin-bottom:20px}.dashboard-shortcuts h2{margin:0}.dashboard-shortcuts>div:first-child>p:not(.eyebrow){margin:9px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.dashboard-shortcut-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.dashboard-shortcut-list button{position:relative;min-height:118px;padding:17px 33px 16px 15px;border:1px solid #e4d8cc;background:#fffaf6;color:var(--ink);text-align:left;cursor:pointer;transition:border-color .18s,box-shadow .18s,translate .18s}.dashboard-shortcut-list button:hover{border-color:#d68b9f;box-shadow:0 8px 18px rgba(80,24,41,.08);translate:0 -2px}.dashboard-shortcut-list strong{display:block;font-size:12px;line-height:1.35}.dashboard-shortcut-list small{display:block;margin-top:7px;color:var(--muted);font:10px/1.45 'Be Vietnam Pro'}.dashboard-shortcut-list span{position:absolute;right:14px;bottom:14px;color:var(--red);font-size:17px}
+@media(min-width:901px){
+  .admin-sidebar{width:248px;padding:27px 15px 18px}
+  .admin-sidebar .brand{font-size:27px;padding:0 10px}
+  .admin-sidebar nav{margin-top:34px;padding-top:22px}
+  .admin-sidebar nav button{padding:11px 10px}
+  .admin-content{width:calc(100% - 248px);margin-left:248px;padding:30px clamp(26px,4vw,64px) 64px}
+  .admin-content>header,#adminPanel{max-width:1320px;margin-left:auto;margin-right:auto}
+  .admin-content>header{margin-top:0;margin-bottom:24px}
+  .admin-sidebar>div{padding-top:12px}
+}
+
+@media(min-width:901px) and (max-width:1200px){
+  .admin-content{padding-left:28px;padding-right:28px}
+  .admin-content>header{min-height:82px}
+  .admin-content>header h1{font-size:34px}
+  .quick-product-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .quick-product-fields .wide{grid-column:1/-1}
+  .quick-product-head{gap:16px}
+  .quick-product-actions{flex-wrap:wrap;justify-content:flex-end}
+  .dashboard-shortcuts{grid-template-columns:1fr}
+  .dashboard-shortcut-list{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+
+@media(max-width:900px){
+  .admin-sidebar{grid-template-columns:minmax(0,1fr) auto}
+  .admin-sidebar nav{scroll-snap-type:x mandatory;padding-bottom:2px}
+  .admin-sidebar nav button{scroll-snap-align:start;min-height:38px}
+  .admin-content>header{display:flex;justify-content:space-between}
+  .admin-content>header>div{min-width:0}
+  .admin-content>header>.button{flex:0 0 auto}
+  .admin-form-grid{gap:0 16px}
+  .quick-product-actions{flex-wrap:wrap}
+}
+
+@media(max-width:700px){
+  .admin-sidebar{gap:8px;padding:12px 5vw}
+  .admin-sidebar nav{gap:6px;padding-top:10px}
+  .admin-sidebar nav button{padding:8px 10px;font-size:10px}
+  .admin-sidebar nav button:before{display:none}
+  .admin-content{padding:21px 4.5vw 48px}
+  .admin-content>header{margin-bottom:19px}
+  .admin-content>header h1{font-size:31px;line-height:1.05}
+  .admin-content>header>.button{padding:10px 11px;min-height:38px}
+  .admin-content>header>.button span{display:none}
+  .admin-section-intro{margin-bottom:14px}
+  .dashboard-shortcuts{grid-template-columns:1fr;gap:18px;margin-bottom:15px}
+  .dashboard-shortcut-list{grid-template-columns:1fr}
+  .dashboard-shortcut-list button{min-height:77px;padding:14px 38px 14px 14px}
+  .dashboard-shortcut-list small{margin-top:3px}
+  .admin-section-intro p:not(.eyebrow){font-size:12px}
+  .admin-toolbar{padding:13px;margin-bottom:15px}
+  .panel-action-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .panel-action-buttons>*{width:100%;min-width:0;margin:0!important;padding:10px 8px!important;justify-content:center;text-align:center;line-height:1.35}
+  .editor-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .editor-actions>*{width:100%;min-width:0;margin:0!important;justify-content:center;text-align:center}
+  .quick-product-head{gap:14px}
+  .quick-product-actions{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .quick-product-actions>*{width:100%;margin:0!important;justify-content:center}
+  .quick-product-fields{grid-template-columns:1fr;gap:12px}
+  .quick-product-fields .wide{grid-column:auto}
+  .quick-product-row>header{gap:10px}
+  .quick-detail{padding:8px}
+  .admin-form-grid{grid-template-columns:1fr}
+  .admin-form-grid label{margin-bottom:16px}
+  .admin-content textarea{min-height:82px}
+  .product-list-card,.recent-orders-card{overflow:hidden!important}
+  .product-list-card .table-row,.recent-orders-card .table-row{min-width:0;gap:8px;padding:14px 2px}
+  .product-list-card .table-row{grid-template-columns:minmax(0,1fr) auto}
+  .product-list-card .table-row>span:first-child{grid-column:1/-1}
+  .product-list-card .table-row>span:nth-child(2){min-width:0}
+  .product-list-card .table-row>strong{text-align:right;white-space:nowrap}
+  .product-list-card .table-row>.edit-product{grid-column:1/-1;width:100%;min-height:37px}
+  .recent-orders-card .table-row{grid-template-columns:minmax(0,1fr) auto}
+  .recent-orders-card .table-row>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .recent-orders-card .table-row>strong{white-space:nowrap;text-align:right}
+  .recent-orders-card .table-row>span{grid-column:1/-1;font-size:11px;color:var(--muted)}
+  .customer-data-card>.panel-action{padding:18px}
+  .customer-data-card>.panel-action .secondary-button{width:100%}
+}
+
+@media(max-width:410px){
+  .admin-sidebar .brand{font-size:21px}
+  .admin-sidebar>div button{padding:7px 5px;font-size:10px}
+  .admin-content>header h1{font-size:28px}
+  .panel-action-buttons,.editor-actions,.quick-product-actions{grid-template-columns:1fr}
+  .stats article{min-width:0}
+  .stats strong{font-size:21px}
+}

@@ -17,7 +17,8 @@
   min-width: 0;
   min-height: 440px;
   display: grid;
-  grid-template-columns: minmax(300px, 42%) minmax(0, 58%);
+  /* Give the product artwork more room while preserving enough space for options. */
+  grid-template-columns: minmax(340px, 52%) minmax(0, 48%);
   grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
 }
@@ -54,7 +55,7 @@
 }
 
 .detail-copy h2 {
-  font-size: clamp(32px, 3vw, 46px);
+  font-size: clamp(16px, 1.5vw, 23px);
   word-break: break-word;
 }
 
@@ -97,7 +98,7 @@
   }
 
   .detail-copy h2 {
-    font-size: 34px;
+    font-size: 17px;
   }
 
   .modal-close {

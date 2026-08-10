@@ -5,8 +5,14 @@ document.head.append(Object.assign(document.createElement('link'), {rel: 'styles
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-quote-files.css'}));
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-sheet-sync.css'}));
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-order-pdf.css'}));
+document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-accounts.css'}));
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'product-variants.css'}));
 document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-brands.css'}));
+document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'scroll-actions.css'}));
+document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-refinement.css'}));
+document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-responsive.css'}));
+document.head.append(Object.assign(document.createElement('link'), {rel: 'stylesheet', href: 'admin-theme-sync.css'}));
+document.body.append(Object.assign(document.createElement('script'), {src: 'scroll-actions.js'}));
 
 const $ = selector => document.querySelector(selector);
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({
@@ -14,6 +20,92 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({
 }[char]));
 const money = value => `${new Intl.NumberFormat('vi-VN').format(value)} ₫`;
 let tab = 'dashboard';
+const ADMIN_PERMISSION_LABELS = {
+  products: 'Sản phẩm & giá',
+  interface: 'Nội dung, giao diện & banner',
+  quotes: 'File báo giá',
+  brands: 'Thương hiệu',
+  customers: 'Khách hàng & đơn hàng'
+};
+let adminSession = {authenticated:false, user:null};
+
+function hasAdminPermission(permission) {
+  const user = adminSession?.user;
+  return Boolean(user && (user.isOwner || Array.isArray(user.permissions) && user.permissions.includes(permission)));
+}
+
+function isOwnerAccount() {
+  return Boolean(adminSession?.user?.isOwner);
+}
+
+function canOpenInterface() {
+  return hasAdminPermission('interface') || hasAdminPermission('quotes') || hasAdminPermission('brands');
+}
+
+function canOpenTab(name) {
+  if (name === 'dashboard' || name === 'products') return hasAdminPermission('products');
+  if (name === 'interface') return canOpenInterface();
+  if (name === 'customers') return hasAdminPermission('customers');
+  if (name === 'accounts') return isOwnerAccount();
+  return false;
+}
+
+function applyAdminNavigation() {
+  const tabs = [...document.querySelectorAll('[data-tab]')];
+  tabs.forEach(button => {
+    const allowed = canOpenTab(button.dataset.tab);
+    button.hidden = !allowed;
+    button.classList.toggle('active', allowed && button.dataset.tab === tab);
+  });
+  if (!canOpenTab(tab)) tab = tabs.find(button => !button.hidden)?.dataset.tab || 'dashboard';
+  tabs.forEach(button => button.classList.toggle('active', button.dataset.tab === tab));
+}
+
+async function hydrateAdminState() {
+  if (!hasAdminPermission('customers')) {
+    localStorage.removeItem('aeon-customers');
+    localStorage.removeItem('aeon-orders');
+  }
+  await aeonStore.pull();
+}
+
+function safeAdminThemeColor(value, fallback) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+}
+
+function mixAdminThemeColor(first, second, amount = .5) {
+  const ratio = Math.max(0, Math.min(1, Number(amount) || 0));
+  const from = safeAdminThemeColor(first, '#000000').slice(1);
+  const to = safeAdminThemeColor(second, '#ffffff').slice(1);
+  const parts = [0, 2, 4].map(index => Math.round(
+    Number.parseInt(from.slice(index, index + 2), 16) * (1 - ratio)
+    + Number.parseInt(to.slice(index, index + 2), 16) * ratio
+  ).toString(16).padStart(2, '0'));
+  return `#${parts.join('')}`;
+}
+
+function applyAdminTheme(nextLayout = aeonStore.layout()) {
+  const layout = {...AEON_DEFAULT_LAYOUT, ...nextLayout};
+  const accent = safeAdminThemeColor(layout.accentColor, AEON_DEFAULT_LAYOUT.accentColor);
+  const accentDark = safeAdminThemeColor(layout.accentDarkColor, AEON_DEFAULT_LAYOUT.accentDarkColor);
+  const page = safeAdminThemeColor(layout.pageBackgroundColor, AEON_DEFAULT_LAYOUT.pageBackgroundColor);
+  const section = safeAdminThemeColor(layout.sectionBackgroundColor, AEON_DEFAULT_LAYOUT.sectionBackgroundColor);
+  const text = safeAdminThemeColor(layout.textColor, AEON_DEFAULT_LAYOUT.textColor);
+  const root = document.documentElement;
+  root.style.setProperty('--red', accent);
+  root.style.setProperty('--wine', accentDark);
+  root.style.setProperty('--cream', page);
+  root.style.setProperty('--paper', section);
+  root.style.setProperty('--ink', text);
+  root.style.setProperty('--admin-sidebar-deep', mixAdminThemeColor(accentDark, '#000000', .38));
+  root.style.setProperty('--admin-page-tint', mixAdminThemeColor(page, section, .56));
+  root.style.setProperty('--admin-surface', mixAdminThemeColor(page, '#ffffff', .78));
+  root.style.setProperty('--admin-surface-muted', mixAdminThemeColor(section, '#ffffff', .56));
+  root.style.setProperty('--admin-line', mixAdminThemeColor(section, text, .15));
+  root.style.setProperty('--admin-accent-soft', mixAdminThemeColor(accent, '#ffffff', .9));
+  root.style.setProperty('--admin-accent-border', mixAdminThemeColor(accent, '#ffffff', .68));
+}
 
 function normaliseImageUrl(value) {
   const url = String(value ?? '').trim();
@@ -49,6 +141,7 @@ function productVariantRowMarkup(variant = {}) {
     <label>Tên lựa chọn<input data-variant-name required value="${escapeHtml(variant.name || '')}" placeholder="Ví dụ: Hộp 4 bánh"></label>
     <label>Giá bán (VNĐ)<input data-variant-price type="number" min="0" inputmode="numeric" required value="${variant.price ?? ''}" placeholder="750000"></label>
     <label>Mã SKU<input data-variant-sku value="${escapeHtml(variant.sku || '')}" placeholder="AM-2026-04"></label>
+    <label>Ảnh phân loại (URL)<input data-variant-image value="${escapeHtml(variant.image || '')}" placeholder="Để trống dùng ảnh chung"></label>
     <button type="button" class="remove-product-variant" data-remove-variant aria-label="Xóa lựa chọn này">×</button>
   </div>`;
 }
@@ -62,6 +155,7 @@ function productVariantsFromEditor(list) {
     const name = String(row.querySelector('[data-variant-name]').value || '').trim().slice(0, 120);
     const price = Number(row.querySelector('[data-variant-price]').value);
     const sku = String(row.querySelector('[data-variant-sku]').value || '').trim().slice(0, 100);
+    const image = normaliseImageUrl(row.querySelector('[data-variant-image]')?.value || '');
     if (!name || !Number.isFinite(price) || price < 0) throw new Error('Mỗi lựa chọn cần có tên và giá bán hợp lệ.');
     const nameKey = name.toLocaleLowerCase('vi-VN');
     const skuKey = sku.toLocaleLowerCase('vi-VN');
@@ -69,7 +163,7 @@ function productVariantsFromEditor(list) {
     if (sku && skus.has(skuKey)) throw new Error('Mã SKU của các lựa chọn không được trùng nhau.');
     names.add(nameKey);
     if (sku) skus.add(skuKey);
-    return {id: row.dataset.variantId || newProductVariantId(), name, price: Math.round(price), sku};
+    return {id: row.dataset.variantId || newProductVariantId(), name, price: Math.round(price), sku, image};
   });
 }
 
@@ -245,7 +339,9 @@ async function saveQuoteFiles(patch = {}) {
   } catch {
     latestUi = aeonStore.ui();
   }
-  const combined = {...aeonStore.ui(), ...latestUi, ...patch};
+  // Keep a quote-only account from unintentionally writing default interface
+  // fields that are absent from an older saved configuration.
+  const combined = {...latestUi, ...patch};
   const nextUi = {
     ...combined,
     quoteExcelUrl: normaliseQuoteFileUrl(combined.quoteExcelUrl, 'excel'),
@@ -375,12 +471,16 @@ function isAuthed() {
 function showApp() {
   const login = $('#loginView');
   const app = $('#adminApp');
+  const requestedTab = location.hash.replace(/^#/, '');
+  if (requestedTab && canOpenTab(requestedTab)) tab = requestedTab;
+  applyAdminNavigation();
+  applyAdminTheme(aeonStore.layout());
   renderAeonBrandLogos(aeonStore.ui());
   login.hidden = true;
   login.style.display = 'none';
   app.hidden = false;
-  app.style.display = 'grid';
-  history.replaceState(null, '', 'admin.html#dashboard');
+  app.style.display = 'block';
+  history.replaceState(null, '', `admin.html#${tab}`);
   render();
 }
 
@@ -401,9 +501,12 @@ $('#loginForm').addEventListener('submit', async event => {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || 'Không thể đăng nhập.');
+    adminSession = {authenticated:true, user:result.user || null};
     aeonStore.setAdminSession(true);
+    await hydrateAdminState();
     showApp();
   } catch (loginError) {
+    adminSession = {authenticated:false, user:null};
     aeonStore.setAdminSession(false);
     error.textContent = loginError.message || 'Tài khoản hoặc mật khẩu chưa đúng.';
   } finally {
@@ -413,14 +516,17 @@ $('#loginForm').addEventListener('submit', async event => {
 
 $('#logout').onclick = async () => {
   await fetch('/api/admin/logout', {method:'POST'}).catch(() => null);
+  adminSession = {authenticated:false, user:null};
   aeonStore.setAdminSession(false);
   location.reload();
 };
 
 document.querySelectorAll('[data-tab]').forEach(button => {
   button.onclick = () => {
+    if (!canOpenTab(button.dataset.tab)) return;
     tab = button.dataset.tab;
-    document.querySelectorAll('[data-tab]').forEach(item => item.classList.toggle('active', item === button));
+    applyAdminNavigation();
+    history.replaceState(null, '', `admin.html#${tab}`);
     render();
   };
 });
@@ -430,19 +536,33 @@ function render() {
     dashboard: 'Tổng quan',
     products: 'Sản phẩm & giá',
     interface: 'Giao diện',
-    customers: 'Khách hàng'
+    customers: 'Khách hàng',
+    accounts: 'Tài khoản & phân quyền'
   };
+  if (!canOpenTab(tab)) {
+    applyAdminNavigation();
+    return render();
+  }
+  applyAdminNavigation();
   $('#adminTitle').textContent = labels[tab];
   const panel = $('#adminPanel');
   if (tab === 'dashboard') return dashboard(panel);
   if (tab === 'products') return productPanel(panel);
   if (tab === 'interface') {
-    interfacePanel(panel);
-    brandSettingsPanel(panel);
-    assetPanel(panel);
-    return layoutPanel(panel);
+    panel.innerHTML = '';
+    if (hasAdminPermission('interface')) interfacePanel(panel);
+    if (hasAdminPermission('brands')) brandSettingsPanel(panel);
+    if (hasAdminPermission('interface') || hasAdminPermission('quotes')) {
+      assetPanel(panel);
+      if (!hasAdminPermission('interface')) panel.querySelectorAll('.asset-editor:not(.quote-file-editor)').forEach(section => section.remove());
+      if (!hasAdminPermission('quotes')) panel.querySelector('.quote-file-editor')?.remove();
+    }
+    if (hasAdminPermission('interface')) layoutPanel(panel);
+    return;
   }
-  return customersPanel(panel);
+  if (tab === 'customers') return customersPanel(panel);
+  if (tab === 'accounts') return accountPanel(panel);
+  panel.innerHTML = '<section class="admin-card"><p class="empty-admin">Mục quản trị không hợp lệ.</p></section>';
 }
 
 function quickProductRow(product, isNew = false, positionProducts = []) {
@@ -542,6 +662,11 @@ function dashboard(panel) {
   const orders = aeonStore.orders();
   const revenue = orders.reduce((sum, order) => sum + order.total, 0);
   const products = aeonStore.products();
+  const shortcuts = [
+    {tab:'products', label:'Quản lý sản phẩm', detail:'Thêm, sửa, sắp xếp và nhập danh sách'},
+    hasAdminPermission('interface') && {tab:'interface', label:'Điều chỉnh giao diện', detail:'Banner, nội dung và bố cục trang chủ'},
+    hasAdminPermission('customers') && {tab:'customers', label:'Xem khách hàng', detail:'Đơn hàng, PDF và dữ liệu đã đồng bộ'}
+  ].filter(Boolean);
   panel.innerHTML = `
     <div class="stats">
       <article><span>Đơn hàng</span><strong>${orders.length}</strong></article>
@@ -549,58 +674,25 @@ function dashboard(panel) {
       <article><span>Doanh thu mẫu</span><strong>${money(revenue)}</strong></article>
       <article><span>Sản phẩm</span><strong>${products.length}</strong></article>
     </div>
-    <section class="admin-card quick-product-manager" aria-labelledby="quickProductTitle">
-      <div class="quick-product-head"><div><p class="eyebrow">QUẢN LÝ NHANH</p><h2 id="quickProductTitle">Sản phẩm ngay trên màn hình chính</h2><p>Thêm hoặc cập nhật tên, giá và mô tả. Ảnh, thành phần và thông tin chi tiết hiện có vẫn được giữ nguyên.</p></div><div class="quick-product-actions"><button class="secondary-button" id="quickAddProduct" type="button">+ Thêm sản phẩm</button><button class="button primary" id="quickSaveProducts" type="button">Lưu thay đổi</button></div></div>
-      <div class="quick-product-list" id="quickProductList">${products.length ? products.map(product => quickProductRow(product)).join('') : '<p class="empty-admin" id="quickProductsEmpty">Chưa có sản phẩm. Bấm “Thêm sản phẩm” để bắt đầu.</p>'}</div>
-      <p class="quick-product-status" id="quickProductStatus" aria-live="polite">Các thay đổi chỉ được áp dụng khi bạn bấm “Lưu thay đổi”.</p>
-      <div class="dashboard-product-editor" id="dashboardProductEditor"></div>
+    <section class="admin-card dashboard-shortcuts" aria-labelledby="dashboardShortcutsTitle">
+      <div><p class="eyebrow">THAO TÁC NHANH</p><h2 id="dashboardShortcutsTitle">Bắt đầu công việc</h2><p>Chọn khu vực cần quản lý. Tổng quan chỉ hiển thị số liệu, không hiển thị danh sách sản phẩm.</p></div>
+      <div class="dashboard-shortcut-list">${shortcuts.map(item => `<button type="button" data-dashboard-tab="${item.tab}"><strong>${item.label}</strong><small>${item.detail}</small><span>→</span></button>`).join('')}</div>
     </section>
-    <section class="admin-card">
+    <section class="admin-card recent-orders-card">
       <h2>Đơn hàng gần đây</h2>
       ${orders.length ? `<div class="admin-table">${orders.slice(0, 5).map(order => {
         const customer = customers.find(item => item.id === order.customerId) || {};
         return `<div class="table-row"><b>${order.code}</b><span>${escapeHtml(customer.name || '—')}</span><span>${order.createdAt}</span><strong>${money(order.total)}</strong></div>`;
       }).join('')}</div>` : '<p class="empty-admin">Chưa có đơn hàng nào. Đơn từ website sẽ xuất hiện tại đây.</p>'}
     </section>`;
-
-  const list = $('#quickProductList');
-  const status = $('#quickProductStatus');
-  const bindQuickRow = row => {
-    const detail = row.querySelector('[data-quick-detail]');
-    if (detail) detail.onclick = () => openProductDetailFromDashboard(detail.dataset.quickDetail);
-    const remove = row.querySelector('[data-quick-remove]');
-    if (remove) remove.onclick = () => {
-      row.remove();
-      if (!list.children.length) list.innerHTML = '<p class="empty-admin" id="quickProductsEmpty">Chưa có sản phẩm. Bấm “Thêm sản phẩm” để bắt đầu.</p>';
+  panel.querySelectorAll('[data-dashboard-tab]').forEach(button => {
+    button.onclick = () => {
+      tab = button.dataset.dashboardTab;
+      applyAdminNavigation();
+      history.replaceState(null, '', `admin.html#${tab}`);
+      render();
     };
-  };
-  list.querySelectorAll('[data-quick-id]').forEach(bindQuickRow);
-  $('#quickAddProduct').onclick = () => {
-    const empty = $('#quickProductsEmpty');
-    if (empty) empty.remove();
-    list.insertAdjacentHTML('beforeend', quickProductRow({name: '', price: '', label: '', description: ''}, true, aeonStore.products()));
-    const row = list.lastElementChild;
-    bindQuickRow(row);
-    row.querySelector('[data-quick-name]').focus();
-  };
-  $('#quickSaveProducts').onclick = async () => {
-    const rows = quickProductValues(list);
-    if (!rows.length) {
-      status.textContent = 'Hãy thêm ít nhất một sản phẩm trước khi lưu.';
-      return;
-    }
-    const button = $('#quickSaveProducts');
-    try {
-      setBusy(button, true, 'Đang lưu...', 'Lưu thay đổi');
-      const result = await saveQuickProducts(rows);
-      dashboard(panel);
-      toastAdmin(`Đã lưu ${result.saved} sản phẩm${result.added ? `, gồm ${result.added} sản phẩm mới` : ''}.`);
-    } catch (error) {
-      status.textContent = error.message;
-    } finally {
-      setBusy(button, false, 'Đang lưu...', 'Lưu thay đổi');
-    }
-  };
+  });
 }
 
 const importFileLimit = 15 * 1024 * 1024;
@@ -688,7 +780,8 @@ async function saveImportedProducts(drafts) {
       id: cleanTextImport(variant.id, 100) || `variant-${Date.now()}-${index}-${variantIndex}`,
       name: cleanTextImport(variant.name, 120),
       price: Math.round(Number(variant.price)),
-      sku: cleanTextImport(variant.sku, 100)
+      sku: cleanTextImport(variant.sku, 100),
+      image: normaliseImageUrl(variant.image || '')
     }));
     const variants = draft.hasVariantColumns ? importedVariants : existingVariants;
     const variantPrices = variants.map(variant => Number(variant.price)).filter(value => Number.isFinite(value) && value >= 0);
@@ -891,7 +984,8 @@ function renderImportPreview(target, analysis, products) {
 function productPanel(panel) {
   const products = aeonStore.products();
   panel.innerHTML = `
-    <div class="panel-action"><p>Thêm, sửa hoặc xóa sản phẩm. Thay đổi hiển thị ngay tại cửa hàng.</p><div class="panel-action-buttons"><button class="secondary-button" id="downloadCurrentProducts" type="button">Tải danh sách hiện tại</button><button class="secondary-button" id="downloadProductTemplate" type="button">Tải file mẫu</button><button class="secondary-button" id="importProducts" type="button">Tải lên danh sách</button><button class="button primary" id="newProduct">+ Thêm sản phẩm</button></div></div>
+    <section class="admin-section-intro"><p class="eyebrow">DANH MỤC SẢN PHẨM</p><h2>Sản phẩm & giá</h2><p>Thêm, sửa, sắp xếp danh sách hoặc nhập nhanh từ file. Các thay đổi được cập nhật ngay tại cửa hàng sau khi lưu.</p></section>
+    <div class="panel-action admin-toolbar"><p>Chọn một thao tác để bắt đầu.</p><div class="panel-action-buttons"><button class="secondary-button" id="downloadCurrentProducts" type="button">Tải danh sách hiện tại</button><button class="secondary-button" id="downloadProductTemplate" type="button">Tải file mẫu</button><button class="secondary-button" id="importProducts" type="button">Tải lên danh sách</button><button class="button primary" id="newProduct">+ Thêm sản phẩm</button></div></div>
     <section class="admin-card import-products" id="productImportPanel" hidden aria-labelledby="productImportTitle">
       <div class="import-intro"><div><p class="eyebrow">NHẬP DANH MỤC</p><h2 id="productImportTitle">Tải lên danh sách sản phẩm</h2><p>Excel có thể chứa nhiều dòng phân loại cho cùng một sản phẩm. Hệ thống sẽ gom theo ID, mã sản phẩm hoặc tên + thương hiệu để bạn kiểm tra trước khi lưu.</p></div><button class="import-close" type="button" id="closeProductImport" aria-label="Đóng khu vực nhập tệp">×</button></div>
       <form class="import-form" id="productImportForm">
@@ -900,7 +994,7 @@ function productPanel(panel) {
       </form>
       <div class="import-results" id="importResults" aria-live="polite"></div>
     </section>
-    <section class="admin-card">
+    <section class="admin-card product-list-card">
       ${products.length ? `<div class="admin-table">${products.map(product => `<div class="table-row"><span><b>${escapeHtml(product.name)}</b><small>${escapeHtml(product.description)}</small></span><span><b>${escapeHtml(normaliseAeonBrand(product.brand) || 'Chưa chọn thương hiệu')}</b><small>${escapeHtml(product.label || 'Không có nhãn hiển thị')}</small></span><strong>${money(product.price)}</strong><button class="edit-product" data-id="${product.id}">Chỉnh sửa</button></div>`).join('')}</div>` : '<p class="empty-admin">Chưa có sản phẩm. Hãy thêm sản phẩm đầu tiên.</p>'}
     </section>
     <div id="productEditor"></div>`;
@@ -1149,7 +1243,9 @@ function interfacePanel(panel) {
   const ui = aeonStore.ui();
   panel.innerHTML = `
     <section class="admin-card editor">
-      <p>Những nội dung này xuất hiện ở trang chủ. Dùng xuống dòng để ngắt hàng tiêu đề.</p>
+      <p class="eyebrow">NỘI DUNG TRANG CHỦ</p>
+      <h2>Nội dung & nhận diện</h2>
+      <p class="admin-card-description">Những nội dung này xuất hiện ở trang chủ. Dùng xuống dòng để ngắt hàng tiêu đề hoặc nội dung ưu đãi.</p>
       <form id="uiForm">
         <div class="admin-form-grid one">
           <label>Tên logo<input name="logoText" maxlength="32" required value="${escapeHtml(ui.logoText)}" placeholder="Ví dụ: AEON"></label>
@@ -1159,11 +1255,12 @@ function interfacePanel(panel) {
           <label>Tiêu đề hero<textarea name="title" required rows="2">${escapeHtml(ui.title)}</textarea></label>
           <label>Giới thiệu hero<textarea name="intro" required rows="3">${escapeHtml(ui.intro)}</textarea></label>
           <label>Tiêu đề khu vực ưu đãi<input name="promotionTitle" maxlength="80" required value="${escapeHtml(ui.promotionTitle)}"></label>
-          <label>Nội dung ưu đãi mùa trăng<textarea name="promotionText" maxlength="400" required rows="5">${escapeHtml(ui.promotionText)}</textarea><small>Có thể nhấn Enter để xuống dòng; nội dung sẽ hiển thị đúng từng dòng trên trang chủ.</small></label>
+          <div class="promotion-richtext-field"><span>Nội dung ưu đãi mùa trăng</span>${window.AEONPromotionRichText?.editorMarkup({name:'promotionText', value:ui.promotionText, limit:6000}) || `<textarea name="promotionText" maxlength="6000" required rows="5">${escapeHtml(ui.promotionText)}</textarea>`}</div>
         </div>
         <button class="button primary" type="submit">Lưu giao diện</button>
       </form>
     </section>`;
+  window.AEONPromotionRichText?.bindAll(panel);
   $('#uiForm').onsubmit = async event => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1181,7 +1278,8 @@ function interfacePanel(panel) {
         ...values,
         logoText: cleanLogoText(values.logoText, AEON_DEFAULT_UI.logoText, 32),
         logoSubtitle: cleanLogoText(values.logoSubtitle, '', 80, true),
-        logoMode: normaliseLogoMode(values.logoMode)
+        logoMode: normaliseLogoMode(values.logoMode),
+        promotionText: window.AEONPromotionRichText?.clean(values.promotionText, 6000) || String(values.promotionText || '').replace(/\r\n?/g, '\n').trim().slice(0, 6000)
       };
       await saveShared('aeon-ui', nextUi);
       renderAeonBrandLogos(nextUi);
@@ -1526,6 +1624,20 @@ function formatLayoutBannerRatio(value) {
   return `${ratio.toFixed(2).replace(/\.?0+$/, '')}:1`;
 }
 
+function layoutFontFamilyOptions(value) {
+  const fontFamilies = {
+    'aeon-default': 'Mặc định AEON',
+    'be-vietnam-pro': 'Be Vietnam Pro',
+    'playfair-display': 'Playfair Display',
+    arial: 'Arial',
+    georgia: 'Georgia'
+  };
+  const selected = Object.hasOwn(fontFamilies, String(value || '').trim()) ? String(value).trim() : AEON_DEFAULT_LAYOUT.fontFamily;
+  return Object.entries(fontFamilies)
+    .map(([key, label]) => `<option value="${key}"${key === selected ? ' selected' : ''}>${label}</option>`)
+    .join('');
+}
+
 function layoutPanel(panel) {
   const layout = aeonStore.layout();
   const alignOptions = (value, stretch = false) => `
@@ -1545,6 +1657,7 @@ function layoutPanel(panel) {
           <label>Màu nền trang<input name="pageBackgroundColor" type="color" value="${layout.pageBackgroundColor}"></label>
           <label>Màu nền khu vực nội dung<input name="sectionBackgroundColor" type="color" value="${layout.sectionBackgroundColor}"></label>
           <label>Màu chữ chính<input name="textColor" type="color" value="${layout.textColor}"></label>
+          <label>Font chữ giao diện<select name="fontFamily">${layoutFontFamilyOptions(layout.fontFamily)}</select></label>
           <label>Cỡ tiêu đề hero <output data-output="heroTitleSize">${layout.heroTitleSize}px</output><input class="layout-range" type="range" name="heroTitleSize" min="10" max="90" step="1" value="${layout.heroTitleSize}"></label>
           <label>Cỡ mô tả hero <output data-output="heroIntroSize">${layout.heroIntroSize}px</output><input class="layout-range" type="range" name="heroIntroSize" min="12" max="22" step="1" value="${layout.heroIntroSize}"></label>
           <label>Tỷ lệ banner desktop (chỉ đổi chiều ngang) <output data-output="bannerAspectRatio">${formatLayoutBannerRatio(layout.bannerAspectRatio)}</output><input class="layout-range" type="range" name="bannerAspectRatio" min="1.5" max="4" step="any" value="${layout.bannerAspectRatio}" data-output-format="ratio"></label>
@@ -1554,7 +1667,8 @@ function layoutPanel(panel) {
           <label>Chiều cao hero <output data-output="heroHeight">${layout.heroHeight ? `${layout.heroHeight}px` : 'Tự động'}</output><input class="layout-range" type="range" name="heroHeight" min="0" max="700" step="10" value="${layout.heroHeight}" data-auto-label="Tự động"></label>
           <label>Khoảng cách đầu/cuối các khu vực <output data-output="sectionSpacing">${layout.sectionSpacing ? `${layout.sectionSpacing}px` : 'Tự động'}</output><input class="layout-range" type="range" name="sectionSpacing" min="0" max="170" step="5" value="${layout.sectionSpacing}" data-auto-label="Tự động"></label>
           <label>Chiều cao ảnh sản phẩm <output data-output="productImageHeight">${layout.productImageHeight ? `${layout.productImageHeight}px` : 'Tự động'}</output><input class="layout-range" type="range" name="productImageHeight" min="0" max="480" step="10" value="${layout.productImageHeight}" data-auto-label="Tự động"></label>
-          <label>Số cột sản phẩm trên desktop<select name="productColumns"><option value="0"${Number(layout.productColumns) === 0 ? ' selected' : ''}>Tự động</option><option value="2"${Number(layout.productColumns) === 2 ? ' selected' : ''}>2 cột</option><option value="3"${Number(layout.productColumns) === 3 ? ' selected' : ''}>3 cột</option><option value="4"${Number(layout.productColumns) === 4 ? ' selected' : ''}>4 cột</option></select></label>
+          <label>Số cột sản phẩm trên desktop<select name="productColumns"><option value="0"${Number(layout.productColumns) === 0 ? ' selected' : ''}>Tự động</option><option value="1"${Number(layout.productColumns) === 1 ? ' selected' : ''}>1 cột</option><option value="2"${Number(layout.productColumns) === 2 ? ' selected' : ''}>2 cột</option><option value="3"${Number(layout.productColumns) === 3 ? ' selected' : ''}>3 cột</option><option value="4"${Number(layout.productColumns) === 4 ? ' selected' : ''}>4 cột</option><option value="5"${Number(layout.productColumns) === 5 ? ' selected' : ''}>5 cột</option><option value="6"${Number(layout.productColumns) === 6 ? ' selected' : ''}>6 cột</option></select></label>
+          <label>Số cột sản phẩm trên mobile<select name="productColumnsMobile"><option value="0"${Number(layout.productColumnsMobile) === 0 ? ' selected' : ''}>Tự động</option><option value="1"${Number(layout.productColumnsMobile) === 1 ? ' selected' : ''}>1 cột</option><option value="2"${Number(layout.productColumnsMobile) === 2 ? ' selected' : ''}>2 cột</option></select></label>
           <label>Cỡ logo <output data-output="logoSize">${layout.logoSize}px</output><input class="layout-range" type="range" name="logoSize" min="18" max="48" step="1" value="${layout.logoSize}"></label>
           <label>Vị trí nút “Xem chi tiết”<select name="productButtonAlign">${alignOptions(layout.productButtonAlign)}</select></label>
           <label>Vị trí nút đặt hàng<select name="checkoutButtonAlign">${alignOptions(layout.checkoutButtonAlign, true)}</select></label>
@@ -1572,11 +1686,12 @@ function layoutPanel(panel) {
   $('#layoutForm').onsubmit = async event => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget));
-    ['heroTitleSize', 'heroIntroSize', 'bannerAspectRatio', 'productTitleSize', 'headerHeight', 'heroHeight', 'sectionSpacing', 'productImageHeight', 'productColumns', 'logoSize'].forEach(key => {
+    ['heroTitleSize', 'heroIntroSize', 'bannerAspectRatio', 'productTitleSize', 'headerHeight', 'heroHeight', 'sectionSpacing', 'productImageHeight', 'productColumns', 'productColumnsMobile', 'logoSize'].forEach(key => {
       values[key] = Number(values[key]);
     });
     try {
       await saveShared('aeon-layout', {...layout, ...values});
+      applyAdminTheme({...layout, ...values});
       toastAdmin('Đã lưu màu sắc, bố cục và kích thước giao diện.');
     } catch (error) {
       toastAdmin(error.message);
@@ -1585,6 +1700,7 @@ function layoutPanel(panel) {
   $('#resetLayout').onclick = async () => {
     try {
       await saveShared('aeon-layout', AEON_DEFAULT_LAYOUT);
+      applyAdminTheme(AEON_DEFAULT_LAYOUT);
       render();
       toastAdmin('Đã khôi phục bố cục mặc định.');
     } catch (error) {
@@ -1616,6 +1732,126 @@ async function downloadCustomerExcel(button) {
     toastAdmin(error.message);
   } finally {
     setBusy(button, false, 'Đang tạo Excel...', 'Xuất Excel');
+  }
+}
+
+function accountPermissionCheckboxes(selected = []) {
+  const granted = new Set(selected);
+  return Object.entries(ADMIN_PERMISSION_LABELS).map(([id, label]) => `
+    <label class="account-permission-option"><input type="checkbox" name="permissions" value="${id}"${granted.has(id) ? ' checked' : ''}><span>${escapeHtml(label)}</span></label>`).join('');
+}
+
+function accountPermissionSummary(permissions = []) {
+  const labels = permissions.map(permission => ADMIN_PERMISSION_LABELS[permission]).filter(Boolean);
+  return labels.length ? labels.join(' · ') : 'Chưa được cấp quyền';
+}
+
+async function accountPanel(panel, editingId = '') {
+  panel.innerHTML = '<section class="admin-card"><p class="empty-admin">Đang tải danh sách tài khoản…</p></section>';
+  try {
+    const response = await fetch('/api/admin/accounts', {cache:'no-store'});
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Không thể tải danh sách tài khoản.');
+    const accounts = Array.isArray(result.accounts) ? result.accounts : [];
+    const editing = accounts.find(account => account.id === editingId && !account.isOwner) || null;
+    const accountRows = accounts.map(account => {
+      const status = account.active ? 'Đang hoạt động' : 'Đã tạm khóa';
+      return `<article class="account-row ${account.active ? '' : 'is-disabled'}">
+        <div class="account-row-main"><div class="account-row-title"><h3>${escapeHtml(account.displayName || account.username)}</h3>${account.isOwner ? '<span class="account-owner-badge">QUẢN TRỊ CHÍNH</span>' : `<span class="account-status ${account.active ? 'is-active' : ''}">${status}</span>`}</div>
+          <p><b>@${escapeHtml(account.username)}</b> · ${escapeHtml(accountPermissionSummary(account.permissions))}</p></div>
+        ${account.isOwner ? '<small>Toàn quyền quản trị</small>' : `<div class="account-row-actions"><button class="secondary-button" type="button" data-edit-admin-account="${escapeHtml(account.id)}">Chỉnh sửa</button><button class="danger" type="button" data-toggle-admin-account="${escapeHtml(account.id)}">${account.active ? 'Tạm khóa' : 'Kích hoạt'}</button></div>`}
+      </article>`;
+    }).join('');
+
+    panel.innerHTML = `
+      <section class="admin-card account-editor">
+        <p class="eyebrow">TÀI KHOẢN NỘI BỘ</p>
+        <h2>${editing ? 'Cập nhật tài khoản con' : 'Tạo tài khoản con'}</h2>
+        <p>Tài khoản con chỉ thấy và sử dụng những nhóm chức năng bạn cấp quyền. Tài khoản quản trị chính luôn có toàn quyền.</p>
+        <form id="adminAccountForm">
+          <div class="admin-form-grid">
+            <label>Tên hiển thị<input name="displayName" maxlength="80" required value="${escapeHtml(editing?.displayName || '')}" placeholder="Ví dụ: Nhân viên kinh doanh"></label>
+            <label>Tên đăng nhập<input name="username" maxlength="40" ${editing ? 'readonly' : 'required'} value="${escapeHtml(editing?.username || '')}" placeholder="vi-du: sales.aeon" autocomplete="username"><small>3–40 ký tự: chữ thường, số, ., _ hoặc -.</small></label>
+            <label class="account-password-field">${editing ? 'Mật khẩu mới (để trống nếu giữ nguyên)' : 'Mật khẩu'}<input name="password" type="password" minlength="8" maxlength="128" ${editing ? '' : 'required'} autocomplete="new-password" placeholder="Tối thiểu 8 ký tự"></label>
+            ${editing ? `<label class="account-active-option"><input name="active" type="checkbox"${editing.active ? ' checked' : ''}> <span>Cho phép tài khoản này đăng nhập</span></label>` : ''}
+          </div>
+          <fieldset class="account-permissions"><legend>Quyền sử dụng chức năng</legend><div class="account-permission-grid">${accountPermissionCheckboxes(editing?.permissions || [])}</div></fieldset>
+          <div class="editor-actions"><button class="button primary" type="submit">${editing ? 'Lưu thay đổi' : 'Tạo tài khoản'}</button>${editing ? '<button class="secondary-button" id="cancelAccountEdit" type="button">Hủy chỉnh sửa</button>' : ''}</div>
+        </form>
+      </section>
+      <section class="admin-card account-directory"><div class="panel-action"><div><p class="eyebrow">DANH SÁCH QUẢN TRỊ</p><h2>Tài khoản & quyền hiện có</h2></div><span class="account-count">${accounts.length} tài khoản</span></div><div class="account-list">${accountRows || '<p class="empty-admin">Chưa có tài khoản.</p>'}</div></section>`;
+
+    const form = $('#adminAccountForm');
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const submit = form.querySelector('button[type="submit"]');
+      const values = new FormData(form);
+      const permissions = values.getAll('permissions');
+      if (!permissions.length) {
+        toastAdmin('Hãy chọn ít nhất một quyền sử dụng.');
+        return;
+      }
+      const payload = {
+        action: editing ? 'update' : 'create',
+        displayName: String(values.get('displayName') || ''),
+        permissions,
+        password: String(values.get('password') || '')
+      };
+      if (editing) {
+        payload.id = editing.id;
+        payload.active = values.get('active') === 'on';
+      } else {
+        payload.username = String(values.get('username') || '');
+      }
+      try {
+        setBusy(submit, true, editing ? 'Đang lưu…' : 'Đang tạo…', editing ? 'Lưu thay đổi' : 'Tạo tài khoản');
+        const saveResponse = await fetch('/api/admin/accounts', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(payload)
+        });
+        const saved = await saveResponse.json().catch(() => ({}));
+        if (!saveResponse.ok) throw new Error(saved.error || 'Không thể lưu tài khoản.');
+        await accountPanel(panel);
+        toastAdmin(editing ? 'Đã cập nhật tài khoản và quyền sử dụng.' : 'Đã tạo tài khoản con. Hãy gửi tên đăng nhập và mật khẩu cho người dùng qua kênh riêng.');
+      } catch (error) {
+        toastAdmin(error.message);
+      } finally {
+        setBusy(submit, false, editing ? 'Đang lưu…' : 'Đang tạo…', editing ? 'Lưu thay đổi' : 'Tạo tài khoản');
+      }
+    };
+
+    $('#cancelAccountEdit')?.addEventListener('click', () => accountPanel(panel));
+    panel.querySelectorAll('[data-edit-admin-account]').forEach(button => {
+      button.onclick = () => accountPanel(panel, button.dataset.editAdminAccount);
+    });
+    panel.querySelectorAll('[data-toggle-admin-account]').forEach(button => {
+      button.onclick = async () => {
+        const account = accounts.find(item => item.id === button.dataset.toggleAdminAccount);
+        if (!account) return;
+        try {
+          setBusy(button, true, 'Đang lưu…', account.active ? 'Tạm khóa' : 'Kích hoạt');
+          const saveResponse = await fetch('/api/admin/accounts', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+              action:'update', id:account.id, displayName:account.displayName,
+              permissions:account.permissions, active:!account.active
+            })
+          });
+          const saved = await saveResponse.json().catch(() => ({}));
+          if (!saveResponse.ok) throw new Error(saved.error || 'Không thể cập nhật tài khoản.');
+          await accountPanel(panel);
+          toastAdmin(account.active ? 'Đã tạm khóa tài khoản con.' : 'Đã kích hoạt lại tài khoản con.');
+        } catch (error) {
+          toastAdmin(error.message);
+        } finally {
+          setBusy(button, false, 'Đang lưu…', account.active ? 'Tạm khóa' : 'Kích hoạt');
+        }
+      };
+    });
+  } catch (error) {
+    panel.innerHTML = `<section class="admin-card"><p class="empty-admin">${escapeHtml(error.message || 'Không thể tải danh sách tài khoản.')}</p></section>`;
   }
 }
 
@@ -1675,23 +1911,29 @@ function toastAdmin(message) {
 }
 
 window.addEventListener('aeon-store-sync', () => {
+  applyAdminTheme(aeonStore.layout());
   renderAeonBrandLogos(aeonStore.ui());
   if (isAuthed()) render();
 });
 
+applyAdminTheme(aeonStore.layout());
 renderAeonBrandLogos(aeonStore.ui());
 async function initialiseAdminSession() {
   try {
     const response = await fetch('/api/admin/session', {cache:'no-store'});
     const result = await response.json().catch(() => ({}));
     if (response.ok && result.authenticated) {
+      adminSession = {authenticated:true, user:result.user || null};
       aeonStore.setAdminSession(true);
+      await hydrateAdminState();
       showApp();
       return;
     }
+    adminSession = {authenticated:false, user:null};
     aeonStore.setAdminSession(false);
     if (result.configured === false) $('#loginError').textContent = 'Máy chủ chưa cấu hình ADMIN_USERNAME và ADMIN_PASSWORD.';
   } catch {
+    adminSession = {authenticated:false, user:null};
     aeonStore.setAdminSession(false);
     $('#loginError').textContent = 'Không thể kiểm tra phiên quản trị. Hãy kiểm tra kết nối máy chủ.';
   }
