@@ -101,6 +101,14 @@
   font-weight: 600;
 }
 
+.catalog-control-filters {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
 .catalog-controls label {
   display: flex;
   align-items: center;
@@ -122,6 +130,10 @@
   font: 600 10px 'Be Vietnam Pro', sans-serif;
   outline: 0;
   cursor: pointer;
+}
+
+#productPriceFilter {
+  min-width: 190px;
 }
 
 .catalog-controls select:focus-visible {
@@ -195,6 +207,11 @@
     margin-bottom: 13px;
   }
 
+  .catalog-control-filters {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .catalog-result {
     font-size: 10px;
   }
@@ -207,5 +224,9 @@
   .catalog-controls select {
     min-width: 0;
     width: min(235px, 72%);
+  }
+
+  #productPriceFilter {
+    min-width: 0;
   }
 }

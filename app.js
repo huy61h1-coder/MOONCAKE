@@ -19,6 +19,10 @@ function normaliseImageUrl(value) {
   return `/${url.replace(/^\.?\//, '')}`;
 }
 
+function normaliseHeroDisplayMode(value) {
+  return String(value || '').trim() === 'image-only' ? 'image-only' : 'content-image';
+}
+
 function normaliseQuoteFileUrl(value, kind) {
   const url = normaliseImageUrl(value);
   if (!url) return '';
@@ -135,11 +139,13 @@ const brandDirectory = $('#brandDirectory');
 const productSearchForm = $('#topProductSearch');
 const productSearchInput = $('#productSearchInput');
 const clearProductSearch = $('#clearProductSearch');
+const productPriceFilter = $('#productPriceFilter');
 const productSort = $('#productSort');
 const catalogResult = $('#catalogResult');
 let activeBrand = '';
 let brandDirectoryExpanded = false;
 let productSearchQuery = '';
+let productPriceFilterValue = 'all';
 let productSortValue = 'featured';
 
 $('#openCart').innerHTML = '<svg class="cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 1.9-1.5L20 8H7.1"></path><circle cx="10" cy="20" r="1"></circle><circle cx="17" cy="20" r="1"></circle></svg><span>Giỏ hàng</span><b id="cartCount">0</b>';
@@ -172,6 +178,24 @@ heroCopy.querySelector('.hero-actions').append(compactPromotion);
 const quoteDownload = $('#quoteDownload');
 const quoteDownloadTrigger = $('#quoteDownloadTrigger');
 const quoteDownloadMenu = $('#quoteDownloadMenu');
+
+function placeQuoteDownloadInHero(imageOnly) {
+  const heroSection = $('.hero');
+  const regularActions = heroCopy.querySelector('.hero-actions');
+  let imageOnlyActions = heroSection.querySelector('.hero-image-only-actions');
+
+  if (!imageOnlyActions) {
+    imageOnlyActions = document.createElement('div');
+    imageOnlyActions.className = 'hero-image-only-actions';
+    imageOnlyActions.hidden = true;
+    heroSection.append(imageOnlyActions);
+  }
+
+  const destination = imageOnly ? imageOnlyActions : regularActions;
+  if (quoteDownload.parentElement !== destination) destination.prepend(quoteDownload);
+  imageOnlyActions.hidden = !imageOnly;
+  closeQuoteDownloadMenu();
+}
 
 function closeQuoteDownloadMenu() {
   quoteDownloadMenu.hidden = true;
@@ -709,6 +733,10 @@ async function deleteStorefrontProduct(id) {
 function applyUi() {
   const ui = aeonStore.ui();
   renderAeonBrandLogos(ui);
+  const heroSection = $('.hero');
+  const heroImageOnly = normaliseHeroDisplayMode(ui.heroDisplayMode) === 'image-only';
+  heroSection.classList.toggle('hero-image-only', heroImageOnly);
+  placeQuoteDownloadInHero(heroImageOnly);
   const hero = $('.hero-copy');
   hero.querySelector('.eyebrow').textContent = ui.eyebrow;
   hero.querySelector('h1').innerHTML = String(ui.title).split('\n').map((text, index) => index ? `<em>${escapeHtml(text)}</em>` : escapeHtml(text)).join('<br>');
@@ -849,6 +877,26 @@ function catalogProductPrice(product) {
   return product.price > 0 ? product.price : 0;
 }
 
+const PRICE_FILTER_LABELS = {
+  'under-200k': 'dưới 200.000 ₫',
+  '200k-500k': '200.000 – 500.000 ₫',
+  '500k-1m': '500.000 – 1.000.000 ₫',
+  'over-1m': 'trên 1.000.000 ₫',
+  contact: 'liên hệ'
+};
+
+function matchesProductPriceFilter(product, filter = productPriceFilterValue) {
+  const price = catalogProductPrice(product);
+  if (filter === 'all') return true;
+  if (filter === 'contact') return price <= 0;
+  if (price <= 0) return false;
+  if (filter === 'under-200k') return price < 200000;
+  if (filter === '200k-500k') return price >= 200000 && price <= 500000;
+  if (filter === '500k-1m') return price > 500000 && price <= 1000000;
+  if (filter === 'over-1m') return price > 1000000;
+  return true;
+}
+
 function sortCatalogProducts(items) {
   const sorted = [...items];
   const collator = new Intl.Collator('vi', {sensitivity:'base', numeric:true});
@@ -882,6 +930,7 @@ function updateCatalogResult(visibleCount, totalCount) {
   const context = [];
   if (activeBrand) context.push(`nhãn hiệu ${activeBrand}`);
   if (productSearchQuery) context.push(`từ khóa “${productSearchQuery}”`);
+  if (PRICE_FILTER_LABELS[productPriceFilterValue]) context.push(`giá ${PRICE_FILTER_LABELS[productPriceFilterValue]}`);
   catalogResult.textContent = context.length
     ? `${visibleCount} / ${totalCount} sản phẩm · ${context.join(' · ')}`
     : `${totalCount} sản phẩm`;
@@ -928,7 +977,8 @@ function renderProducts() {
   const filteredProducts = products.filter(product => {
     const matchesBrand = !activeBrand || product.brand === activeBrand;
     const matchesSearch = !searchTerm || catalogProductText(product).includes(searchTerm);
-    return matchesBrand && matchesSearch;
+    const matchesPrice = matchesProductPriceFilter(product);
+    return matchesBrand && matchesSearch && matchesPrice;
   });
   const visibleProducts = sortCatalogProducts(filteredProducts);
   updateCatalogResult(visibleProducts.length, products.length);
@@ -1190,6 +1240,11 @@ productSort.addEventListener('change', () => {
   renderProducts();
 });
 
+productPriceFilter.addEventListener('change', () => {
+  productPriceFilterValue = productPriceFilter.value;
+  renderProducts();
+});
+
 document.addEventListener('click', event => {
   const brandDirectoryToggle = event.target.closest('[data-brand-directory-toggle]');
   if (brandDirectoryToggle) {
@@ -1202,7 +1257,9 @@ document.addEventListener('click', event => {
   if (clearCatalogFilters) {
     activeBrand = '';
     productSearchQuery = '';
+    productPriceFilterValue = 'all';
     productSearchInput.value = '';
+    productPriceFilter.value = 'all';
     clearProductSearch.hidden = true;
     renderProducts();
     return;

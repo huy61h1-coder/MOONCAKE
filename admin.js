@@ -435,6 +435,10 @@ function normaliseLogoMode(value) {
   return ['text', 'image', 'image-subtitle'].includes(String(value || '')) ? String(value) : AEON_DEFAULT_UI.logoMode;
 }
 
+function normaliseHeroDisplayMode(value) {
+  return String(value || '').trim() === 'image-only' ? 'image-only' : 'content-image';
+}
+
 async function saveLogoSettings(patch = {}) {
   let latestUi = {};
   try {
@@ -1268,6 +1272,7 @@ function interfacePanel(panel) {
           <label>Tên logo<input name="logoText" maxlength="32" required value="${escapeHtml(ui.logoText)}" placeholder="Ví dụ: AEON"></label>
           <label>Dòng phụ logo<textarea name="logoSubtitle" maxlength="80" rows="2" placeholder="Ví dụ: BÌNH DƯƠNG&#10;NEW CITY">${escapeHtml(ui.logoSubtitle || '')}</textarea><small>Có thể nhấn Enter để xuống dòng.</small></label>
           <label>Kiểu hiển thị logo<select name="logoMode"><option value="text"${ui.logoMode === 'text' ? ' selected' : ''}>Logo chữ</option><option value="image"${ui.logoMode === 'image' ? ' selected' : ''}>Chỉ dùng ảnh logo</option><option value="image-subtitle"${ui.logoMode === 'image-subtitle' ? ' selected' : ''}>Ảnh logo và dòng phụ</option></select></label>
+          <label>Hiển thị khu vực hero<select name="heroDisplayMode"><option value="content-image"${normaliseHeroDisplayMode(ui.heroDisplayMode) === 'content-image' ? ' selected' : ''}>Hiển thị nội dung và hình ảnh</option><option value="image-only"${normaliseHeroDisplayMode(ui.heroDisplayMode) === 'image-only' ? ' selected' : ''}>Chỉ hiển thị hình ảnh</option></select><small>Ảnh banner phủ toàn bộ chiều cao hero và chừa lề theo giao diện.</small></label>
           <label>Nhãn chiến dịch<input name="eyebrow" required value="${escapeHtml(ui.eyebrow)}"></label>
           <label>Tiêu đề hero<textarea name="title" required rows="2">${escapeHtml(ui.title)}</textarea></label>
           <label>Giới thiệu hero<textarea name="intro" required rows="3">${escapeHtml(ui.intro)}</textarea></label>
@@ -1296,6 +1301,7 @@ function interfacePanel(panel) {
         logoText: cleanLogoText(values.logoText, AEON_DEFAULT_UI.logoText, 32),
         logoSubtitle: cleanLogoText(values.logoSubtitle, '', 80, true),
         logoMode: normaliseLogoMode(values.logoMode),
+        heroDisplayMode: normaliseHeroDisplayMode(values.heroDisplayMode),
         promotionText: window.AEONPromotionRichText?.clean(values.promotionText, 6000) || String(values.promotionText || '').replace(/\r\n?/g, '\n').trim().slice(0, 6000)
       };
       await saveShared('aeon-ui', nextUi);
