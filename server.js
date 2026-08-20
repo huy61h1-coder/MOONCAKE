@@ -1020,17 +1020,6 @@ http.createServer(async (request, response) => {
   try { pathname = decodeURIComponent(new URL(request.url, `http://${request.headers.host}`).pathname); }
   catch { response.writeHead(400); return response.end('Bad request'); }
 
-  // Redirect the bare domain to a versioned preview URL. Link crawlers receive
-  // a distinct final URL whenever the Hero image changes, avoiding stale cards.
-  if (request.method === 'GET' && pathname === '/') {
-    const previewVersion = socialPreviewVersion(currentHeroImage(readState()));
-    response.writeHead(302, {
-      Location: `/index.html?preview=${encodeURIComponent(previewVersion)}`,
-      'Cache-Control':'no-store'
-    });
-    return response.end();
-  }
-
   if (request.method === 'GET' && pathname === '/api/admin/session') {
     const principal = adminPrincipal(request);
     return json(response, 200, {authenticated:Boolean(principal), configured:configuredAdmin(), user:publicAdminPrincipal(principal)});
