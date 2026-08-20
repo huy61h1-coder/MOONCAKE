@@ -309,7 +309,8 @@ function versionedHeroImage(imagePath) {
 
 function socialPreviewMeta(request, state) {
   const ui = state?.['aeon-ui'] || {};
-  const heroImage = versionedHeroImage(currentHeroImage(state));
+  const currentImage = currentHeroImage(state);
+  const heroImage = versionedHeroImage(currentImage);
   let imageUrl;
   try {
     imageUrl = new URL(heroImage, requestOrigin(request));
@@ -319,7 +320,9 @@ function socialPreviewMeta(request, state) {
   const titleText = String(ui.title || 'Trọn vị đoàn viên').replace(/\s+/g, ' ').trim();
   const title = `AEON Mooncake 2026 | ${titleText}`;
   const description = String(ui.intro || 'Bộ sưu tập bánh Trung Thu AEON 2026 — món quà trọn vẹn cho mùa đoàn viên.').replace(/\s+/g, ' ').trim();
-  const pageUrl = `${requestOrigin(request)}/`;
+  const previewUrl = new URL('/index.html', requestOrigin(request));
+  previewUrl.searchParams.set('preview', socialPreviewVersion(currentImage));
+  const pageUrl = previewUrl.href;
   return `<meta property="og:type" content="website" />\n  <meta property="og:locale" content="vi_VN" />\n  <meta property="og:title" content="${escapeHtmlAttribute(title)}" />\n  <meta property="og:description" content="${escapeHtmlAttribute(description)}" />\n  <meta property="og:url" content="${escapeHtmlAttribute(pageUrl)}" />\n  <meta property="og:image" content="${escapeHtmlAttribute(imageUrl.href)}" />\n  <meta property="og:image:secure_url" content="${escapeHtmlAttribute(imageUrl.href)}" />\n  <meta property="og:image:alt" content="${escapeHtmlAttribute(title)}" />\n  <meta name="twitter:card" content="summary_large_image" />\n  <meta name="twitter:title" content="${escapeHtmlAttribute(title)}" />\n  <meta name="twitter:description" content="${escapeHtmlAttribute(description)}" />\n  <meta name="twitter:image" content="${escapeHtmlAttribute(imageUrl.href)}" />`;
 }
 
@@ -1016,6 +1019,17 @@ http.createServer(async (request, response) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(request.url, `http://${request.headers.host}`).pathname); }
   catch { response.writeHead(400); return response.end('Bad request'); }
+
+  // Redirect the bare domain to a versioned preview URL. Link crawlers receive
+  // a distinct final URL whenever the Hero image changes, avoiding stale cards.
+  if (request.method === 'GET' && pathname === '/') {
+    const previewVersion = socialPreviewVersion(currentHeroImage(readState()));
+    response.writeHead(302, {
+      Location: `/index.html?preview=${encodeURIComponent(previewVersion)}`,
+      'Cache-Control':'no-store'
+    });
+    return response.end();
+  }
 
   if (request.method === 'GET' && pathname === '/api/admin/session') {
     const principal = adminPrincipal(request);
