@@ -320,7 +320,7 @@ function socialPreviewMeta(request, state) {
   const title = `AEON Mooncake 2026 | ${titleText}`;
   const description = String(ui.intro || 'Bộ sưu tập bánh Trung Thu AEON 2026 — món quà trọn vẹn cho mùa đoàn viên.').replace(/\s+/g, ' ').trim();
   const pageUrl = `${requestOrigin(request)}/`;
-  return `<meta property="og:type" content="website" />\n  <meta property="og:locale" content="vi_VN" />\n  <meta property="og:title" content="${escapeHtmlAttribute(title)}" />\n  <meta property="og:description" content="${escapeHtmlAttribute(description)}" />\n  <meta property="og:url" content="${escapeHtmlAttribute(pageUrl)}" />\n  <meta property="og:image" content="${escapeHtmlAttribute(imageUrl.href)}" />\n  <meta property="og:image:alt" content="${escapeHtmlAttribute(title)}" />\n  <meta name="twitter:card" content="summary_large_image" />\n  <meta name="twitter:title" content="${escapeHtmlAttribute(title)}" />\n  <meta name="twitter:description" content="${escapeHtmlAttribute(description)}" />\n  <meta name="twitter:image" content="${escapeHtmlAttribute(imageUrl.href)}" />`;
+  return `<meta property="og:type" content="website" />\n  <meta property="og:locale" content="vi_VN" />\n  <meta property="og:title" content="${escapeHtmlAttribute(title)}" />\n  <meta property="og:description" content="${escapeHtmlAttribute(description)}" />\n  <meta property="og:url" content="${escapeHtmlAttribute(pageUrl)}" />\n  <meta property="og:image" content="${escapeHtmlAttribute(imageUrl.href)}" />\n  <meta property="og:image:secure_url" content="${escapeHtmlAttribute(imageUrl.href)}" />\n  <meta property="og:image:alt" content="${escapeHtmlAttribute(title)}" />\n  <meta name="twitter:card" content="summary_large_image" />\n  <meta name="twitter:title" content="${escapeHtmlAttribute(title)}" />\n  <meta name="twitter:description" content="${escapeHtmlAttribute(description)}" />\n  <meta name="twitter:image" content="${escapeHtmlAttribute(imageUrl.href)}" />`;
 }
 
 function publicStoreStateMarkup(state) {
@@ -385,7 +385,7 @@ function storefrontHtml(request) {
   const template = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const heroImage = escapeHtmlAttribute(versionedHeroImage(currentHeroImage(state)));
   return template
-    .replace('<!-- SOCIAL_PREVIEW -->', socialPreviewMeta(request, state))
+    .replace(/<!-- SOCIAL_PREVIEW_START -->[\s\S]*?<!-- SOCIAL_PREVIEW_END -->/, socialPreviewMeta(request, state))
     .replace('<!-- PUBLIC_STORE_STATE -->', publicStoreStateMarkup(state))
     .replace('<!-- INITIAL_LAYOUT -->', initialLayoutStyle(state))
     .replace('src="assets/mooncake-hero.png"', `src="${heroImage}"`);
