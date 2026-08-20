@@ -112,6 +112,7 @@ const AEON_DEFAULT_UI = {
   collectionTitle: 'Danh mục\nđang cập nhật.',
   collectionNote: 'Sản phẩm, giá bán và hình ảnh sẽ được công bố chính thức trong thời gian tới.',
   heroImage: '',
+  heroPreviewVersion: '',
   logoText: 'AEON',
   logoSubtitle: 'MOONCAKE 2026',
   logoImage: '',

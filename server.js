@@ -297,10 +297,19 @@ function currentHeroImage(state) {
   return /^(?:https?:\/\/|\/)/i.test(configuredImage) ? configuredImage : '/assets/mooncake-hero.png';
 }
 
-function versionedHeroImage(imagePath) {
+function safeHeroPreviewVersion(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+}
+
+function heroPreviewVersion(state) {
+  const savedVersion = safeHeroPreviewVersion(state?.['aeon-ui']?.heroPreviewVersion);
+  return savedVersion || socialPreviewVersion(currentHeroImage(state));
+}
+
+function versionedHeroImage(imagePath, previewVersion = '') {
   try {
     const imageUrl = new URL(imagePath, 'http://aeon.local');
-    imageUrl.searchParams.set('v', socialPreviewVersion(imagePath));
+    imageUrl.searchParams.set('v', safeHeroPreviewVersion(previewVersion) || socialPreviewVersion(imagePath));
     return /^https?:\/\//i.test(imagePath) ? imageUrl.href : `${imageUrl.pathname}${imageUrl.search}`;
   } catch {
     return imagePath;
@@ -310,7 +319,8 @@ function versionedHeroImage(imagePath) {
 function socialPreviewMeta(request, state) {
   const ui = state?.['aeon-ui'] || {};
   const currentImage = currentHeroImage(state);
-  const heroImage = versionedHeroImage(currentImage);
+  const previewVersion = heroPreviewVersion(state);
+  const heroImage = versionedHeroImage(currentImage, previewVersion);
   let imageUrl;
   try {
     imageUrl = new URL(heroImage, requestOrigin(request));
@@ -321,7 +331,7 @@ function socialPreviewMeta(request, state) {
   const title = `AEON Mooncake 2026 | ${titleText}`;
   const description = String(ui.intro || 'Bộ sưu tập bánh Trung Thu AEON 2026 — món quà trọn vẹn cho mùa đoàn viên.').replace(/\s+/g, ' ').trim();
   const previewUrl = new URL('/index.html', requestOrigin(request));
-  previewUrl.searchParams.set('preview', socialPreviewVersion(currentImage));
+  previewUrl.searchParams.set('preview', previewVersion);
   const pageUrl = previewUrl.href;
   return `<meta property="og:type" content="website" />\n  <meta property="og:locale" content="vi_VN" />\n  <meta property="og:title" content="${escapeHtmlAttribute(title)}" />\n  <meta property="og:description" content="${escapeHtmlAttribute(description)}" />\n  <meta property="og:url" content="${escapeHtmlAttribute(pageUrl)}" />\n  <meta property="og:image" content="${escapeHtmlAttribute(imageUrl.href)}" />\n  <meta property="og:image:secure_url" content="${escapeHtmlAttribute(imageUrl.href)}" />\n  <meta property="og:image:alt" content="${escapeHtmlAttribute(title)}" />\n  <meta name="twitter:card" content="summary_large_image" />\n  <meta name="twitter:title" content="${escapeHtmlAttribute(title)}" />\n  <meta name="twitter:description" content="${escapeHtmlAttribute(description)}" />\n  <meta name="twitter:image" content="${escapeHtmlAttribute(imageUrl.href)}" />`;
 }
@@ -386,7 +396,7 @@ function initialLayoutStyle(state) {
 function storefrontHtml(request) {
   const state = readState();
   const template = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-  const heroImage = escapeHtmlAttribute(versionedHeroImage(currentHeroImage(state)));
+  const heroImage = escapeHtmlAttribute(versionedHeroImage(currentHeroImage(state), heroPreviewVersion(state)));
   return template
     .replace(/<!-- SOCIAL_PREVIEW_START -->[\s\S]*?<!-- SOCIAL_PREVIEW_END -->/, socialPreviewMeta(request, state))
     .replace('<!-- PUBLIC_STORE_STATE -->', publicStoreStateMarkup(state))

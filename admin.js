@@ -409,7 +409,10 @@ async function saveHeroImage(value) {
   } catch {
     latestUi = aeonStore.ui();
   }
-  await saveShared('aeon-ui', {...aeonStore.ui(), ...latestUi, heroImage});
+  // A new value is generated on every save so social crawlers re-fetch the
+  // preview even when an external service replaces the image at the same URL.
+  const heroPreviewVersion = `hero-${Date.now().toString(36)}`;
+  await saveShared('aeon-ui', {...aeonStore.ui(), ...latestUi, heroImage, heroPreviewVersion});
   const confirmed = await remoteState();
   if (!sameImage(confirmed['aeon-ui']?.heroImage, heroImage)) {
     throw new Error('Ảnh banner chưa được lưu trên máy chủ. Vui lòng thử lại.');
