@@ -843,10 +843,24 @@ function attachImageFallbacks(scope = document) {
   scope.querySelectorAll('img[data-image-fallback]').forEach(image => {
     if (image.dataset.fallbackBound) return;
     image.dataset.fallbackBound = 'true';
+    const fitProductMediaToImage = () => {
+      if (!image.classList.contains('product-official-image') || !image.naturalWidth || !image.naturalHeight) return;
+      const media = image.closest('.product-media');
+      if (!media) return;
+
+      // Let the catalogue card follow the image's natural shape. This keeps
+      // portrait, square and landscape product artwork fully visible without
+      // forcing every product into one fixed media height.
+      const ratio = image.naturalWidth / image.naturalHeight;
+      media.style.setProperty('--product-image-aspect-ratio', String(ratio));
+      media.classList.add('is-fitted-to-image');
+    };
+    image.addEventListener('load', fitProductMediaToImage, {once: true});
     image.addEventListener('error', () => {
       image.hidden = true;
       image.parentElement?.querySelector('[data-image-placeholder]')?.removeAttribute('hidden');
     }, {once: true});
+    if (image.complete) fitProductMediaToImage();
   });
 }
 

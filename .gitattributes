@@ -1,0 +1,9 @@
+# Keep downloadable catalogues and storefront artwork as binary files in Git.
+*.pdf binary
+*.xlsx binary
+*.xls binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary

@@ -4,6 +4,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {analyseProductFile, kindFromFile} = require('./product-import');
 const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 
 const host = process.env.HOST || '0.0.0.0';
@@ -824,14 +825,221 @@ function productImportTemplateWorkbook() {
   return XLSX.write(workbook, {type: 'buffer', bookType: 'xlsx', compression: true});
 }
 
-function productCatalogWorkbook(state) {
+function productCatalogPrice(product) {
+  const variantPrices = Array.isArray(product?.variants)
+    ? product.variants.map(variant => Number(variant?.price) || 0).filter(price => price > 0)
+    : [];
+  return variantPrices.length ? Math.min(...variantPrices) : Math.max(0, Number(product?.price) || 0);
+}
+
+function productCatalogVariants(product) {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  return variants
+    .filter(variant => String(variant?.name || '').trim())
+    .map(variant => {
+      const price = Math.max(0, Number(variant?.price) || 0);
+      return price ? `${String(variant.name).trim()} (${new Intl.NumberFormat('vi-VN').format(price)} đ)` : String(variant.name).trim();
+    })
+    .join('\n');
+}
+
+function imageDimensions(buffer) {
+  if (buffer.length >= 24 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return {extension:'png', width:buffer.readUInt32BE(16), height:buffer.readUInt32BE(20)};
+  }
+  if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset + 9 < buffer.length) {
+    if (buffer[offset] !== 0xff) { offset += 1; continue; }
+    const marker = buffer[offset + 1];
+    offset += 2;
+    if (marker === 0xd8 || marker === 0xd9) continue;
+    if (offset + 2 > buffer.length) return null;
+    const length = buffer.readUInt16BE(offset);
+    if (length < 2 || offset + length > buffer.length) return null;
+    if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
+      return {extension:'jpeg', width:buffer.readUInt16BE(offset + 5), height:buffer.readUInt16BE(offset + 3)};
+    }
+    offset += length;
+  }
+  return null;
+}
+
+function compactCatalogImageUrl(source) {
+  try {
+    const url = new URL(source);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
+    if (url.hostname.toLowerCase() === 'res.cloudinary.com' && url.pathname.includes('/image/upload/')) {
+      url.pathname = url.pathname.replace('/image/upload/', '/image/upload/f_jpg,q_auto,w_420,h_420,c_fit/');
+    }
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
+async function responseBufferWithLimit(response, maxBytes) {
+  const declaredLength = Number(response.headers.get('content-length') || 0);
+  if (declaredLength > maxBytes) return null;
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  const chunks = [];
+  let size = 0;
+  while (true) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks);
+}
+
+async function catalogImageBuffer(value) {
+  const source = String(value || '').trim();
+  if (!source) return null;
+
+  if (source.startsWith('/')) {
+    const imagePath = path.resolve(root, `.${source}`);
+    const assetsRoot = path.join(root, 'assets');
+    if (!imagePath.startsWith(`${assetsRoot}${path.sep}`)) return null;
+    try {
+      const buffer = await fs.promises.readFile(imagePath);
+      return buffer.length <= 2 * 1024 * 1024 && imageDimensions(buffer) ? buffer : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const imageUrl = compactCatalogImageUrl(directGoogleDriveImage(source));
+  if (!imageUrl) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    const response = await fetch(imageUrl, {signal: controller.signal, redirect: 'follow'});
+    clearTimeout(timer);
+    if (!response.ok) return null;
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (!contentType.includes('image/png') && !contentType.includes('image/jpeg')) return null;
+    const buffer = await responseBufferWithLimit(response, 2 * 1024 * 1024);
+    return buffer && imageDimensions(buffer) ? buffer : null;
+  } catch {
+    return null;
+  }
+}
+
+async function productCatalogWorkbook(state) {
   const products = Array.isArray(state['aeon-products']) ? state['aeon-products'] : [];
-  const worksheet = worksheetFromRows(productWorkbookHeaders, productWorkbookRows(products), productWorkbookWidths);
-  worksheet['!freeze'] = {xSplit: 0, ySplit: 1};
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Danh mục');
-  XLSX.utils.book_append_sheet(workbook, productWorkbookGuide(), 'Hướng dẫn');
-  return XLSX.write(workbook, {type: 'buffer', bookType: 'xlsx', compression: true});
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'AEON Mooncake 2026';
+  workbook.created = new Date();
+
+  const catalogue = workbook.addWorksheet('Danh mục sản phẩm', {
+    views: [{state:'frozen', ySplit:4}],
+    pageSetup: {orientation:'landscape', fitToPage:true, fitToWidth:1, fitToHeight:0}
+  });
+  catalogue.columns = [
+    {key:'image', width:18},
+    {key:'name', width:44},
+    {key:'price', width:20},
+    {key:'brand', width:24},
+    {key:'sku', width:22},
+    {key:'variants', width:36}
+  ];
+  catalogue.mergeCells('A1:F1');
+  catalogue.getCell('A1').value = 'DANH MỤC SẢN PHẨM';
+  catalogue.getCell('A1').font = {name:'Be Vietnam Pro', size:18, bold:true, color:{argb:'FFFFFFFF'}};
+  catalogue.getCell('A1').fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FFD72D58'}};
+  catalogue.getCell('A1').alignment = {horizontal:'left', vertical:'middle'};
+  catalogue.getRow(1).height = 34;
+  catalogue.mergeCells('A2:F2');
+  catalogue.getCell('A2').value = `Danh sách ${products.length} sản phẩm đang hiển thị trên website`;
+  catalogue.getCell('A2').font = {name:'Be Vietnam Pro', size:10, color:{argb:'FF6E6967'}};
+  catalogue.getCell('A2').alignment = {vertical:'middle'};
+  catalogue.getRow(2).height = 22;
+  catalogue.getRow(3).height = 8;
+
+  const headerRow = catalogue.addRow(['Hình ảnh', 'Tên sản phẩm', 'Giá bán', 'Thương hiệu', 'Mã sản phẩm', 'Phân loại']);
+  headerRow.height = 26;
+  headerRow.eachCell(cell => {
+    cell.font = {name:'Be Vietnam Pro', size:10, bold:true, color:{argb:'FFFFFFFF'}};
+    cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF9F1739'}};
+    cell.alignment = {horizontal:'left', vertical:'middle'};
+    cell.border = {bottom:{style:'thin', color:{argb:'FFE5D7CC'}}};
+  });
+
+  for (const product of products) {
+    const row = catalogue.addRow([
+      '',
+      String(product?.name || 'Sản phẩm chưa có tên'),
+      productCatalogPrice(product),
+      String(product?.brand || ''),
+      String(product?.sku || ''),
+      productCatalogVariants(product)
+    ]);
+    row.height = 86;
+    row.eachCell(cell => {
+      cell.font = {name:'Be Vietnam Pro', size:10, color:{argb:'FF242224'}};
+      cell.alignment = {vertical:'middle', wrapText:true};
+      cell.border = {bottom:{style:'thin', color:{argb:'FFE5D7CC'}}};
+    });
+    row.getCell(2).font = {name:'Be Vietnam Pro', size:10, bold:true, color:{argb:'FF242224'}};
+    row.getCell(3).numFmt = '#,##0 "đ"';
+    row.getCell(3).font = {name:'Be Vietnam Pro', size:10, bold:true, color:{argb:'FFD72D58'}};
+    row.getCell(1).alignment = {horizontal:'center', vertical:'middle'};
+
+    const imageBuffer = await catalogImageBuffer(product?.image);
+    const imageInfo = imageBuffer && imageDimensions(imageBuffer);
+    if (!imageInfo || !imageBuffer) {
+      row.getCell(1).value = 'Chưa có ảnh';
+      row.getCell(1).font = {name:'Be Vietnam Pro', size:9, italic:true, color:{argb:'FF6E6967'}};
+      continue;
+    }
+    const boxWidth = 104;
+    const boxHeight = 98;
+    const scale = Math.min(boxWidth / imageInfo.width, boxHeight / imageInfo.height);
+    const width = Math.max(1, Math.round(imageInfo.width * scale));
+    const height = Math.max(1, Math.round(imageInfo.height * scale));
+    const imageId = workbook.addImage({buffer:imageBuffer, extension:imageInfo.extension});
+    catalogue.addImage(imageId, {
+      tl: {col: 0.15 + (boxWidth - width) / 130, row: row.number - 1 + (boxHeight - height) / 115},
+      ext: {width, height}
+    });
+  }
+
+  const dataSheet = workbook.addWorksheet('Dữ liệu cập nhật');
+  dataSheet.columns = productWorkbookHeaders.map((header, index) => ({header, key:header, width:productWorkbookWidths[index]}));
+  productWorkbookRows(products).forEach(row => dataSheet.addRow(row));
+  dataSheet.views = [{state:'frozen', ySplit:1}];
+  dataSheet.getRow(1).height = 26;
+  dataSheet.getRow(1).eachCell(cell => {
+    cell.font = {name:'Be Vietnam Pro', size:10, bold:true, color:{argb:'FFFFFFFF'}};
+    cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF9F1739'}};
+    cell.alignment = {vertical:'middle', wrapText:true};
+  });
+  dataSheet.getColumn('Giá bán').numFmt = '#,##0';
+  dataSheet.getColumn('Giá phân loại').numFmt = '#,##0';
+
+  const guideSheet = workbook.addWorksheet('Hướng dẫn');
+  guideSheet.columns = [{width:28}, {width:72}, {width:52}];
+  const guideRows = XLSX.utils.sheet_to_json(productWorkbookGuide(), {defval:'', raw:false});
+  const guideHeaders = ['Cột', 'Yêu cầu', 'Ví dụ'];
+  guideSheet.addRow(guideHeaders);
+  guideRows.forEach(row => guideSheet.addRow(guideHeaders.map(header => row[header])));
+  guideSheet.views = [{state:'frozen', ySplit:1}];
+  guideSheet.getRow(1).eachCell(cell => {
+    cell.font = {name:'Be Vietnam Pro', size:10, bold:true, color:{argb:'FFFFFFFF'}};
+    cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF9F1739'}};
+  });
+  guideSheet.eachRow(row => row.eachCell(cell => {
+    cell.alignment = {vertical:'top', wrapText:true};
+    cell.font = {name:'Be Vietnam Pro', size:10, color:{argb:'FF242224'}};
+  }));
+
+  return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
 function isValidUploadedImage(mimeType, buffer) {
@@ -1201,10 +1409,10 @@ http.createServer(async (request, response) => {
   }
   if (request.method === 'GET' && pathname === '/api/export/products.xlsx') {
     try {
-      const workbook = productCatalogWorkbook(readState());
+      const workbook = await productCatalogWorkbook(readState());
       response.writeHead(200, {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': "attachment; filename=\"product-list.xlsx\"; filename*=UTF-8''danh-sach-san-pham-hien-tai.xlsx",
+        'Content-Disposition': "attachment; filename=\"product-catalog.xlsx\"; filename*=UTF-8''danh-muc-san-pham.xlsx",
         'Content-Length': workbook.length,
         'Cache-Control': 'no-store'
       });

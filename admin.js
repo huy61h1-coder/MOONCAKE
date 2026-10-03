@@ -1009,7 +1009,7 @@ function productPanel(panel) {
   const products = aeonStore.products();
   panel.innerHTML = `
     <section class="admin-section-intro"><p class="eyebrow">DANH MỤC SẢN PHẨM</p><h2>Sản phẩm & giá</h2><p>Thêm, sửa, sắp xếp danh sách hoặc nhập nhanh từ file. Các thay đổi được cập nhật ngay tại cửa hàng sau khi lưu.</p></section>
-    <div class="panel-action admin-toolbar"><p>Chọn một thao tác để bắt đầu.</p><div class="panel-action-buttons"><button class="secondary-button" id="downloadCurrentProducts" type="button">Tải danh sách hiện tại</button><button class="secondary-button" id="downloadProductTemplate" type="button">Tải file mẫu</button><button class="secondary-button" id="importProducts" type="button">Tải lên danh sách</button><button class="button primary" id="newProduct">+ Thêm sản phẩm</button></div></div>
+    <div class="panel-action admin-toolbar"><p>Chọn một thao tác để bắt đầu.</p><div class="panel-action-buttons"><button class="secondary-button" id="downloadCurrentProducts" type="button">Tải danh mục có ảnh</button><button class="secondary-button" id="downloadProductTemplate" type="button">Tải file mẫu</button><button class="secondary-button" id="importProducts" type="button">Tải lên danh sách</button><button class="button primary" id="newProduct">+ Thêm sản phẩm</button></div></div>
     <section class="admin-card import-products" id="productImportPanel" hidden aria-labelledby="productImportTitle">
       <div class="import-intro"><div><p class="eyebrow">NHẬP DANH MỤC</p><h2 id="productImportTitle">Tải lên danh sách sản phẩm</h2><p>Excel có thể chứa nhiều dòng phân loại cho cùng một sản phẩm. Hệ thống sẽ gom theo ID, mã sản phẩm hoặc tên + thương hiệu để bạn kiểm tra trước khi lưu.</p></div><button class="import-close" type="button" id="closeProductImport" aria-label="Đóng khu vực nhập tệp">×</button></div>
       <form class="import-form" id="productImportForm">
@@ -1070,10 +1070,10 @@ async function downloadProductTemplate(button) {
 async function downloadCurrentProducts(button) {
   return downloadProductExcel(button, {
     url: '/api/export/products.xlsx',
-    filename: 'danh-sach-san-pham-hien-tai.xlsx',
+    filename: 'danh-muc-san-pham.xlsx',
     busyText: 'Đang tạo danh sách...',
-    idleText: 'Tải danh sách hiện tại',
-    successText: 'Đã tải danh sách sản phẩm hiện tại kèm toàn bộ phân loại.',
+    idleText: 'Tải danh mục có ảnh',
+    successText: 'Đã tải danh mục có ảnh, tên sản phẩm, giá và dữ liệu cập nhật.',
     errorText: 'Không thể tạo danh sách sản phẩm Excel.'
   });
 }

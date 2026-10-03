@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@tesseract.js-data/vie": "^1.0.0",
+    "exceljs": "^4.4.0",
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.19.1",
     "tesseract.js": "^7.0.0",

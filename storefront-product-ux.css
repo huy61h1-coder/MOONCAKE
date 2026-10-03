@@ -48,7 +48,7 @@
 .products {
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   gap: 20px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .products[data-product-count="1"] {
@@ -77,6 +77,12 @@
   min-height: 0;
   aspect-ratio: 1.32 / 1;
   background: linear-gradient(135deg, color-mix(in srgb, var(--product-bg) 70%, white), #f8f5ef);
+}
+
+/* Each card follows the natural proportions of its own product artwork.
+   A manually selected image height in the admin settings still takes priority. */
+body:not(.has-custom-product-media) .product-media.is-fitted-to-image {
+  aspect-ratio: var(--product-image-aspect-ratio, 1.32 / 1);
 }
 
 .product-media::before { width: 52%; height: auto; aspect-ratio: 1; top: auto; }
