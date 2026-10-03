@@ -317,6 +317,11 @@ function versionedHeroImage(imagePath, previewVersion = '') {
   }
 }
 
+function storefrontPageTitle(ui) {
+  const titleText = String(ui?.title || '').replace(/\s+/g, ' ').trim();
+  return titleText || 'AEON Mooncake 2026';
+}
+
 function socialPreviewMeta(request, state) {
   const ui = state?.['aeon-ui'] || {};
   const currentImage = currentHeroImage(state);
@@ -328,8 +333,7 @@ function socialPreviewMeta(request, state) {
   } catch {
     return '';
   }
-  const titleText = String(ui.title || 'Trọn vị đoàn viên').replace(/\s+/g, ' ').trim();
-  const title = `AEON Mooncake 2026 | ${titleText}`;
+  const title = storefrontPageTitle(ui);
   const description = String(ui.intro || 'Bộ sưu tập bánh Trung Thu AEON 2026 — món quà trọn vẹn cho mùa đoàn viên.').replace(/\s+/g, ' ').trim();
   const previewUrl = new URL('/index.html', requestOrigin(request));
   previewUrl.searchParams.set('preview', previewVersion);
@@ -398,10 +402,12 @@ function storefrontHtml(request) {
   const state = readState();
   const template = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const heroImage = escapeHtmlAttribute(versionedHeroImage(currentHeroImage(state), heroPreviewVersion(state)));
+  const pageTitle = escapeHtmlAttribute(storefrontPageTitle(state['aeon-ui']));
   return template
     .replace(/<!-- SOCIAL_PREVIEW_START -->[\s\S]*?<!-- SOCIAL_PREVIEW_END -->/, socialPreviewMeta(request, state))
     .replace('<!-- PUBLIC_STORE_STATE -->', publicStoreStateMarkup(state))
     .replace('<!-- INITIAL_LAYOUT -->', initialLayoutStyle(state))
+    .replace(/<title>[^<]*<\/title>/, `<title>${pageTitle}</title>`)
     .replace('src="assets/mooncake-hero.png"', `src="${heroImage}"`);
 }
 

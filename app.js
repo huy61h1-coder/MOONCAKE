@@ -732,6 +732,8 @@ async function deleteStorefrontProduct(id) {
 
 function applyUi() {
   const ui = aeonStore.ui();
+  const pageTitle = String(ui.title || '').replace(/\s+/g, ' ').trim();
+  document.title = pageTitle || 'AEON Mooncake 2026';
   renderAeonBrandLogos(ui);
   const heroSection = $('.hero');
   const heroImageOnly = normaliseHeroDisplayMode(ui.heroDisplayMode) === 'image-only';
