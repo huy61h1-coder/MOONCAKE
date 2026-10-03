@@ -79,16 +79,14 @@
   background: linear-gradient(135deg, color-mix(in srgb, var(--product-bg) 70%, white), #f8f5ef);
 }
 
-/* Each card follows the natural proportions of its own product artwork.
-   A manually selected image height in the admin settings still takes priority. */
-body:not(.has-custom-product-media) .product-media.is-fitted-to-image {
-  aspect-ratio: var(--product-image-aspect-ratio, 1.32 / 1);
-}
-
 .product-media::before { width: 52%; height: auto; aspect-ratio: 1; top: auto; }
 
 .product-official-image {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  object-position: center;
   padding: 12px;
   background: transparent;
 }
