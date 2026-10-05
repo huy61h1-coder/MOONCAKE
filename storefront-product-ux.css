@@ -77,6 +77,10 @@
   height: auto;
   min-height: 0;
   aspect-ratio: 1.32 / 1;
+  padding: 0;
+  border: 0;
+  position: relative;
+  overflow: hidden;
   background: linear-gradient(135deg, color-mix(in srgb, var(--product-bg) 70%, white), #f8f5ef);
 }
 
@@ -84,10 +88,10 @@
 
 .product-official-image {
   display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  justify-self: center;
-  align-self: center;
   object-fit: contain !important;
   object-position: center;
   padding: 0;
