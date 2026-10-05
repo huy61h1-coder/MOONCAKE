@@ -1,0 +1,43 @@
+// Stable storefront settings for static GitHub/Netlify deployments.
+// Product data intentionally stays in its existing storage/API source.
+window.AEON_DEPLOYED_STOREFRONT_STATE = {
+  "aeon-ui": {
+    "eyebrow": "MÙA TRĂNG 2026",
+    "title": "Women Day",
+    "intro": "Tuyển chọn hương vị tinh tế trong những hộp quà thanh lịch,\nĐể mỗi khoảnh khắc sum vầy đều thật đáng nhớ.",
+    "heroDisplayMode": "image-only",
+    "promotionTitle": "Thông Tin Chiết Khấu",
+    "promotionText": "Ngày 03/08 – 19/08:  từ 1 triệu trở lên: 8%<br>Ngày 20/08 – 25/09:<br>• Từ 3triệu – 10triệu: Chiết khấu 5%|• Trên 10triệu – 15triệu: Chiết khấu 10%<br>• Trên 15triệu – 30triệu: Chiết khấu 12%|• Trên 30triệu: Chiết khấu 15%<br>*Hình thức chiết khấu: Phiếu ưu đãi. Áp dụng cho hộp bánh không rượu.<br>*Không Áp dụng giảm giá ngày Member(5&amp;20).",
+    "collectionTitle": "Danh mục\nđang cập nhật.",
+    "collectionNote": "Sản phẩm, giá bán và hình ảnh sẽ được công bố chính thức trong thời gian tới.",
+    "heroImage": "",
+    "logoText": "AEON",
+    "logoSubtitle": "",
+    "logoImage": "/assets/uploads/1786204636278-logo-055.png",
+    "logoMode": "image",
+    "quoteExcelUrl": "/assets/uploads/quotes/1785604164925-72j2j0-FO-14-01-Preliminary-Questionnaire-v6.xlsx",
+    "quotePdfUrl": "/assets/uploads/quotes/1785604173555-99ij31-AEON-CALATOG-TRUNG-THU-2026.pdf"
+  },
+  "aeon-layout": {
+    "heroTitleSize": 35,
+    "heroIntroSize": 13,
+    "bannerAspectRatio": 1.5,
+    "heroButtonAlign": "left",
+    "productTitleSize": 12,
+    "productButtonAlign": "left",
+    "checkoutButtonAlign": "stretch",
+    "accentColor": "#d72d58",
+    "accentDarkColor": "#df345c",
+    "pageBackgroundColor": "#ffd1d1",
+    "sectionBackgroundColor": "#f5e5e5",
+    "textColor": "#242224",
+    "headerHeight": 60,
+    "heroHeight": 0,
+    "sectionSpacing": 0,
+    "productImageHeight": 0,
+    "productColumns": 5,
+    "productColumnsMobile": 2,
+    "fontFamily": "aeon-default",
+    "logoSize": 18
+  }
+};

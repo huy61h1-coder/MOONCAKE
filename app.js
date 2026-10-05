@@ -1487,14 +1487,7 @@ window.addEventListener('storage', event => {
 });
 window.addEventListener('aeon-store-sync', refreshStorefront);
 
-try {
-  refreshStorefront();
-} finally {
-  // The static template stays hidden until every current storefront override is applied.
-  document.body.classList.remove('storefront-loading');
-}
 Promise.resolve(window.aeonStoreReady).finally(() => {
   refreshStorefront();
   document.body.classList.remove('storefront-loading');
 });
-setInterval(() => aeonStore.pull(), 5000);

@@ -233,9 +233,9 @@ const canSync = () => location.protocol === 'http:' || location.protocol === 'ht
 
 // The server places only storefront-safe data in the first HTML response.
 // Hydrate it before rendering so an old device-local layout cannot flash first.
-function embeddedStorefrontState() {
+function storefrontStateFromElement(id) {
   try {
-    const source = document.getElementById('aeon-public-state')?.textContent || '';
+    const source = document.getElementById(id)?.textContent || '';
     const state = JSON.parse(source);
     return state && typeof state === 'object' ? state : {};
   } catch {
@@ -243,7 +243,13 @@ function embeddedStorefrontState() {
   }
 }
 
-const initialStorefrontState = embeddedStorefrontState();
+const serverStorefrontState = storefrontStateFromElement('aeon-public-state');
+const deployedStorefrontState = window.AEON_DEPLOYED_STOREFRONT_STATE && typeof window.AEON_DEPLOYED_STOREFRONT_STATE === 'object'
+  ? window.AEON_DEPLOYED_STOREFRONT_STATE
+  : {};
+const initialStorefrontState = Object.keys(serverStorefrontState).length
+  ? serverStorefrontState
+  : deployedStorefrontState;
 ['aeon-products', 'aeon-ui', 'aeon-layout', 'aeon-brands'].forEach(key => {
   if (Object.hasOwn(initialStorefrontState, key)) {
     localStorage.setItem(key, JSON.stringify(initialStorefrontState[key]));
@@ -401,4 +407,8 @@ if (Array.isArray(savedProducts) && savedProducts.length === sampleProductIds.le
 
 // Let the storefront wait for the server state once on a fresh page load so
 // an older browser-local banner never replaces the current shared banner.
-window.aeonStoreReady = aeonStore.pull();
+// A server-rendered or deployed snapshot is authoritative for the first paint.
+// Avoid a second asynchronous request replacing it with stale cached settings.
+window.aeonStoreReady = Object.keys(initialStorefrontState).length
+  ? Promise.resolve(true)
+  : aeonStore.pull();
