@@ -845,10 +845,23 @@ function attachImageFallbacks(scope = document) {
   scope.querySelectorAll('img[data-image-fallback]').forEach(image => {
     if (image.dataset.fallbackBound) return;
     image.dataset.fallbackBound = 'true';
+    const fitProductMediaHeight = () => {
+      if (!image.classList.contains('product-official-image') || !image.naturalWidth || !image.naturalHeight) return;
+      const media = image.closest('.product-media');
+      if (!media) return;
+
+      // Use the original image proportion for the media area. This prevents
+      // portrait product photos from being cropped at the top or bottom.
+      const ratio = image.naturalWidth / image.naturalHeight;
+      media.style.setProperty('--product-image-aspect-ratio', String(ratio));
+      media.classList.add('is-image-height-fit');
+    };
+    image.addEventListener('load', fitProductMediaHeight, {once: true});
     image.addEventListener('error', () => {
       image.hidden = true;
       image.parentElement?.querySelector('[data-image-placeholder]')?.removeAttribute('hidden');
     }, {once: true});
+    if (image.complete) fitProductMediaHeight();
   });
 }
 

@@ -79,6 +79,13 @@
   background: linear-gradient(135deg, color-mix(in srgb, var(--product-bg) 70%, white), #f8f5ef);
 }
 
+/* Preserve all of the original product artwork by sizing the media area to
+   the image's own proportion, rather than cropping to a fixed horizontal box. */
+body:not(.has-custom-product-media) .product-media.is-image-height-fit {
+  height: auto;
+  aspect-ratio: var(--product-image-aspect-ratio, 1.32 / 1) !important;
+}
+
 .product-media::before { width: 52%; height: auto; aspect-ratio: 1; top: auto; }
 
 .product-official-image {
