@@ -33,6 +33,13 @@ const adminPermissionDefinitions = [
 ];
 const adminPermissionIds = new Set(adminPermissionDefinitions.map(item => item.id));
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.ico':'image/x-icon','.pdf':'application/pdf','.csv':'text/csv; charset=utf-8','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.xls':'application/vnd.ms-excel'};
+const noCacheHeaders = {
+  'Cache-Control':'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0',
+  'CDN-Cache-Control':'no-store',
+  'Surrogate-Control':'no-store',
+  'Pragma':'no-cache',
+  'Expires':'0'
+};
 const imageExtensions = {'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/gif':'.gif','image/svg+xml':'.svg'};
 const uploadImageTypes = new Set(Object.keys(imageExtensions));
 fs.mkdirSync(uploadDir, {recursive:true});
@@ -1540,7 +1547,7 @@ http.createServer(async (request, response) => {
   if (request.method === 'GET' && requested === '/index.html') {
     try {
       const content = storefrontHtml(request);
-      response.writeHead(200, {'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
+      response.writeHead(200, {'Content-Type':'text/html; charset=utf-8', ...noCacheHeaders});
       return response.end(content);
     } catch {
       response.writeHead(500, {'Content-Type':'text/plain; charset=utf-8'});
@@ -1549,7 +1556,7 @@ http.createServer(async (request, response) => {
   }
   fs.readFile(filePath, (error, content) => {
     if (error) { response.writeHead(error.code === 'ENOENT' ? 404 : 500, {'Content-Type':'text/plain; charset=utf-8'}); return response.end(error.code === 'ENOENT' ? 'Not found' : 'Server error'); }
-    response.writeHead(200, {'Content-Type':types[path.extname(filePath).toLowerCase()] || 'application/octet-stream','Cache-Control':'no-store'});
+    response.writeHead(200, {'Content-Type':types[path.extname(filePath).toLowerCase()] || 'application/octet-stream', ...noCacheHeaders});
     response.end(content);
   });
 }).listen(port, host, () => console.log(`AEON Mooncake is available on http://${host}:${port}`));
