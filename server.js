@@ -20,6 +20,24 @@ const maxQuoteUploadBytes = 20 * 1024 * 1024;
 const adminUsername = String(process.env.ADMIN_USERNAME || '').trim();
 const adminPassword = String(process.env.ADMIN_PASSWORD || '');
 const googleSheetWebAppUrl = String(process.env.GOOGLE_SHEET_WEB_APP_URL || '').trim();
+function publicSupabaseConfig() {
+  try {
+    const source = fs.readFileSync(path.join(root, 'supabase-config.js'), 'utf8');
+    return {
+      url: /AEON_SUPABASE_URL\s*=\s*'([^']+)'/.exec(source)?.[1] || '',
+      key: /AEON_SUPABASE_ANON_KEY\s*=\s*'([^']+)'/.exec(source)?.[1] || ''
+    };
+  } catch {
+    return {url:'', key:''};
+  }
+}
+// This is the public project key already used by the storefront for image
+// uploads. State access is governed by the aeon_state RLS policies in the
+// bundled migration; deployment environments can override either value.
+const bundledSupabaseConfig = publicSupabaseConfig();
+const supabaseUrl = String(process.env.SUPABASE_URL || bundledSupabaseConfig.url).replace(/\/+$/, '');
+const supabaseAnonKey = String(process.env.SUPABASE_ANON_KEY || bundledSupabaseConfig.key).trim();
+const cloudStateKeys = ['aeon-products', 'aeon-ui', 'aeon-layout', 'aeon-brands', 'aeon-customers', 'aeon-orders'];
 const adminSessionCookie = 'aeon_admin_session';
 const adminSessionTtlSeconds = 12 * 60 * 60;
 const adminSessions = new Map();
@@ -33,7 +51,7 @@ const adminPermissionDefinitions = [
 ];
 const adminPermissionIds = new Set(adminPermissionDefinitions.map(item => item.id));
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.ico':'image/x-icon','.pdf':'application/pdf','.csv':'text/csv; charset=utf-8','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.xls':'application/vnd.ms-excel'};
-const storefrontBuild = '20261006-runtime-v3';
+const storefrontBuild = '20261007-cloud-state-v4';
 const productImageFitCss = '\n/* Server-enforced product image fit. Kept here so even an older cached page gets the correction. */\n.product-media{position:relative!important;overflow:hidden!important}.product-media img.product-official-image{display:block!important;position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;margin:0!important;padding:0!important;object-fit:contain!important;object-position:center center!important}\n';
 const noCacheHeaders = {
   'Cache-Control':'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0',
@@ -231,7 +249,61 @@ function readState() {
     }
   }
 }
-function writeState(state) { const temporary = `${statePath}.tmp`; fs.writeFileSync(temporary, JSON.stringify(state, null, 2)); fs.renameSync(temporary, statePath); }
+function writeLocalState(state) {
+  const temporary = `${statePath}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(state, null, 2));
+  fs.renameSync(temporary, statePath);
+}
+
+function cloudHeaders(prefer = '') {
+  return {
+    apikey: supabaseAnonKey,
+    Authorization: `Bearer ${supabaseAnonKey}`,
+    ...(prefer ? {Prefer: prefer} : {})
+  };
+}
+
+async function readCloudState() {
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+  const response = await fetch(`${supabaseUrl}/rest/v1/aeon_state?select=key,value`, {
+    headers: cloudHeaders()
+  });
+  if (!response.ok) throw new Error(`Không thể đọc dữ liệu cloud (HTTP ${response.status}).`);
+  const rows = await response.json();
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const state = {};
+  rows.forEach(row => {
+    if (cloudStateKeys.includes(row?.key)) state[row.key] = row.value;
+  });
+  return Object.keys(state).length ? state : null;
+}
+
+async function writeCloudState(state) {
+  if (!supabaseUrl || !supabaseAnonKey) return;
+  const rows = cloudStateKeys
+    .filter(key => Object.hasOwn(state || {}, key))
+    .map(key => ({key, value: state[key], updated_at: new Date().toISOString()}));
+  if (!rows.length) return;
+  const response = await fetch(`${supabaseUrl}/rest/v1/aeon_state?on_conflict=key`, {
+    method: 'POST',
+    headers: {...cloudHeaders('resolution=merge-duplicates,return=minimal'), 'Content-Type':'application/json'},
+    body: JSON.stringify(rows)
+  });
+  if (!response.ok) throw new Error(`Không thể lưu dữ liệu cloud (HTTP ${response.status}).`);
+}
+
+// The local file is only a working copy. Cloud state is authoritative so a
+// container restart or a deploy cannot restore an obsolete storefront layout.
+const stateReady = readCloudState()
+  .then(cloudState => {
+    if (cloudState) writeLocalState({...readState(), ...cloudState});
+  })
+  .catch(error => console.warn(`AEON cloud state unavailable: ${error.message}`));
+
+async function writeState(state) {
+  writeLocalState(state);
+  await writeCloudState(state);
+}
 
 function publicStorefrontState(state) {
   const visible = {};
@@ -1262,6 +1334,7 @@ http.createServer(async (request, response) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(request.url, `http://${request.headers.host}`).pathname); }
   catch { response.writeHead(400); return response.end('Bad request'); }
+  await stateReady;
 
   if (request.method === 'GET' && pathname === '/api/admin/session') {
     const principal = adminPrincipal(request);
@@ -1349,7 +1422,7 @@ http.createServer(async (request, response) => {
         };
         accounts.push(account);
         state[adminAccountsStateKey] = accounts;
-        writeState(state);
+        await writeState(state);
         return json(response, 201, {ok:true, account:publicSubAdminAccount(account)});
       }
 
@@ -1373,7 +1446,7 @@ http.createServer(async (request, response) => {
         if (password) updated.passwordHash = hashSubAdminPassword(password);
         accounts[index] = updated;
         state[adminAccountsStateKey] = accounts;
-        writeState(state);
+        await writeState(state);
         revokeSubAdminSessions(accountId);
         return json(response, 200, {ok:true, account:publicSubAdminAccount(updated)});
       }
@@ -1473,7 +1546,7 @@ http.createServer(async (request, response) => {
         }
       }
       state[key] = value;
-      writeState(state);
+      await writeState(state);
       return json(response, 200, {ok:true});
     } catch (error) { return json(response, 400, {error:error.message || 'Không thể lưu dữ liệu.'}); }
   }
